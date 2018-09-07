@@ -1,0 +1,292 @@
+###################################################
+#                                                   #
+#  Source file of the interface for the             #
+#  MadOS plugin of MG5aMC.                          #
+#                                                   #
+#####################################################
+
+import os
+import subprocess
+import logging
+import itertools
+import sys
+import random
+import re
+import time
+import shutil
+
+from madgraph import MadGraph5Error, InvalidCmd, MG5DIR
+import madgraph.various.progressbar as pbar
+import madgraph.interface.extended_cmd as extended_cmd 
+import madgraph.interface.madgraph_interface as madgraph_interface
+import madgraph.interface.master_interface as master_interface
+import madgraph.interface.loop_interface as loop_interface
+import madgraph.various.misc as misc
+import madgraph.iolibs.files as files
+import madgraph.various.lhe_parser as lhe_parser
+from madgraph.interface.loop_interface import CommonLoopInterface
+import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+
+import MadOS.mados_fks as mados_fks
+
+
+plugin_path = os.path.dirname(os.path.realpath( __file__ ))
+
+logger = logging.getLogger('MadOS_plugin.Interface')
+
+pjoin = os.path.join
+
+class MadOSInterfaceError(MadGraph5Error):
+    """ Error from the resummation interface. """
+
+class MadOSInvalidCmd(InvalidCmd):
+    """ Invalid command issued to the resummation plugin. """
+
+
+class MadOSInterface(master_interface.MasterCmd):
+    """ Interface for steering the Resummation tasks. """
+
+    # Change the prompt 
+    def preloop(self, *args, **opts):
+        """only change the prompt after calling  the mother preloop command"""
+        super(MadOSInterface, self).preloop(*args,**opts)
+        # The colored prompt screws up the terminal for some reason.
+        #self.prompt = '\033[92mPY8Kernels > \033[0m'
+        self.prompt = 'MadOS > '
+
+
+    def do_generate(self, line, *args, **opts):
+        """does the usual generate command, then, if the output mode is NLO
+        on-shell singularities are looked for
+        """
+        super(MadOSInterface, self).do_generate(line, *args, **opts)
+        # check that a NLO generation has been done (if not, just return)
+        if not hasattr(self, '_fks_multi_proc') or not self._fks_multi_proc:
+            logger.warning('No NLO Process has been generated.\n To use MadOS, please generate a process with [QCD]')
+            return
+
+        # now one needs to check for OS resonances
+        logger.info('Looking for on-shell singularities in the real emissions...')
+        self.n_os = 0
+        for born in self._fks_multi_proc['born_processes']:
+            for real in born.real_amps:
+                self.n_os += mados_fks.find_os_divergences(real)
+        logger.info('Found %d on-shell contributions' % self.n_os)
+
+
+    def do_output(self, line):
+        """output command: if no os divergences are there or if LO run has
+        been generated nothing has to be done.
+        Otherwise, the diagrams for the on-shell resonances 
+        need to be exported too
+        """
+        if not hasattr(self, '_fks_multi_proc') or not self._fks_multi_proc:
+            super(MadOSInterface, self).do_output(line)
+            return
+        elif self.n_os == 0:
+            super(MadOSInterface, self).do_output(line)
+            return
+
+        # let us generate right away the matrix elements
+        if not self._curr_matrix_elements.get_matrix_elements():
+            self._curr_matrix_elements = \
+                             mados_fks.FKSHelasMultiProcessWithOS(\
+                                self._fks_multi_proc, 
+                                loop_optimized= self.options['loop_optimized_output'])
+
+
+
+    # Export a matrix element  
+    def export(self, nojpeg = False, main_file_name = "", group_processes=False):
+        """Export a generated amplitude to file"""
+
+        self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
+        def generate_matrix_elements(self, group=False):
+            """Helper function to generate the matrix elements before
+            exporting"""
+
+            # Sort amplitudes according to number of diagrams,
+            # to get most efficient multichannel output
+            self._curr_amps.sort(lambda a1, a2: a2.get_number_of_diagrams() - \
+                                 a1.get_number_of_diagrams())
+
+            cpu_time1 = time.time()
+            ndiags = 0
+            if not self._curr_matrix_elements.get_matrix_elements():
+                if group:
+                    raise MadGraph5Error, "Cannot group subprocesses when "+\
+                                                              "exporting to NLO"
+                else:
+                    self._curr_matrix_elements = \
+                             fks_helas.FKSHelasMultiProcess(\
+                                self._fks_multi_proc, 
+                                loop_optimized= self.options['loop_optimized_output'])
+                    
+                    if not self.options['low_mem_multicore_nlo_generation']: 
+                        # generate the code the old way
+                        ndiags = sum([len(me.get('diagrams')) for \
+                                      me in self._curr_matrix_elements.\
+                                      get_matrix_elements()])
+                        # assign a unique id number to all process and
+                        # generate a list of possible PDF combinations
+                        uid = 0 
+                        initial_states=[]
+                        for me in self._curr_matrix_elements.get_matrix_elements():
+                            uid += 1 # update the identification number
+                            me.get('processes')[0].set('uid', uid)
+                            try:
+                                initial_states.append(sorted(list(set((p.get_initial_pdg(1),p.get_initial_pdg(2)) for \
+                                                                      p in me.born_matrix_element.get('processes')))))
+                            except IndexError:
+                                initial_states.append(sorted(list(set((p.get_initial_pdg(1)) for \
+                                                                      p in me.born_matrix_element.get('processes')))))
+                        
+                            for fksreal in me.real_processes:
+                            # Pick out all initial state particles for the two beams
+                                try:
+                                    initial_states.append(sorted(list(set((p.get_initial_pdg(1),p.get_initial_pdg(2)) for \
+                                                                 p in fksreal.matrix_element.get('processes')))))
+                                except IndexError:
+                                    initial_states.append(sorted(list(set((p.get_initial_pdg(1)) for \
+                                                                 p in fksreal.matrix_element.get('processes')))))
+                                    
+                            
+                        # remove doubles from the list
+                        checked = []
+                        for e in initial_states:
+                            if e not in checked:
+                                checked.append(e)
+                        initial_states=checked
+
+                        self._curr_matrix_elements.set('initial_states',initial_states)
+
+                    else:
+                        #new NLO generation
+                        if self._curr_matrix_elements['has_loops']:
+                            self._curr_exporter.opt['mp'] = True
+                        self._curr_exporter.model = self._curr_model
+                        ndiags = 0
+
+            cpu_time2 = time.time()
+            return ndiags, cpu_time2 - cpu_time1
+
+        # Start of the actual routine
+
+        ndiags, cpu_time = generate_matrix_elements(self, group=group_processes)
+        calls = 0
+
+        path = self._export_dir
+
+        if self._export_format in ['NLO']:
+            path = os.path.join(path, 'SubProcesses')
+
+            #_curr_matrix_element is a FKSHelasMultiProcess Object 
+            self._fks_directories = []
+            proc_charac = self._curr_exporter.proc_characteristic 
+            for charac in ['has_isr', 'has_fsr', 'has_loops']:
+                proc_charac[charac] = self._curr_matrix_elements[charac]
+
+            # prepare for the generation
+            # glob_directories_map is for the new NLO generation
+            global glob_directories_map
+            glob_directories_map = []
+
+            # Save processes instances generated
+            self.born_processes_for_olp = []
+            self.born_processes = []
+            for ime, me in \
+                enumerate(self._curr_matrix_elements.get('matrix_elements')):
+                if not self.options['low_mem_multicore_nlo_generation']:
+                    #me is a FKSHelasProcessFromReals
+                    calls = calls + \
+                            self._curr_exporter.generate_directories_fks(me, 
+                            self._curr_helas_model, 
+                            ime, len(self._curr_matrix_elements.get('matrix_elements')), 
+                            path,self.options['OLP'])
+                    self._fks_directories.extend(self._curr_exporter.fksdirs)
+                    self.born_processes_for_olp.append(me.born_matrix_element.get('processes')[0])
+                    self.born_processes.append(me.born_matrix_element.get('processes'))
+                else:
+                    glob_directories_map.append(\
+                            [self._curr_exporter, me, self._curr_helas_model, 
+                             ime, len(self._curr_matrix_elements.get('matrix_elements')), 
+                             path, self.options['OLP']])
+
+            if self.options['low_mem_multicore_nlo_generation']:
+                # start the pool instance with a signal instance to catch ctr+c
+                logger.info('Writing directories...')
+                original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+                if self.ncores_for_proc_gen < 0: # use all cores
+                    pool = multiprocessing.Pool(maxtasksperchild=1)
+                else:
+                    pool = multiprocessing.Pool(processes=self.ncores_for_proc_gen,maxtasksperchild=1)
+                signal.signal(signal.SIGINT, original_sigint_handler)
+                try:
+                    # the very large timeout passed to get is to be able to catch
+                    # KeyboardInterrupts
+                    diroutputmap = pool.map_async(generate_directories_fks_async,
+                                                  range(len(glob_directories_map))).get(9999999)
+                except KeyboardInterrupt:
+                    pool.terminate()
+                    raise KeyboardInterrupt 
+    
+                pool.close()
+                pool.join()
+                
+                #clean up tmp files containing final matrix elements
+                for mefile in self._curr_matrix_elements.get('matrix_elements'):
+                    os.remove(mefile)
+
+                for charac in ['nexternal', 'ninitial']:
+                    proc_charac[charac] = self._curr_exporter.proc_characteristic[charac]
+                # ninitial and nexternal
+                proc_charac['nexternal'] = max([diroutput[4] for diroutput in diroutputmap])
+                ninitial_set = set([diroutput[3] for diroutput in diroutputmap])
+                if len(ninitial_set) != 1:
+                    raise MadGraph5Error, ("Invalid ninitial values: %s" % ' ,'.join(list(ninitial_set)))    
+                proc_charac['ninitial'] = list(ninitial_set)[0]
+
+                self.born_processes = []
+                self.born_processes_for_olp = []
+                max_loop_vertex_ranks = []
+                
+                for diroutput in diroutputmap:
+                    calls = calls + diroutput[0]
+                    self._fks_directories.extend(diroutput[1])
+                    max_loop_vertex_ranks.append(diroutput[2])
+                    self.born_processes.extend(diroutput[5])
+                    self.born_processes_for_olp.append(diroutput[5][0])
+
+            else:
+                max_loop_vertex_ranks = [me.get_max_loop_vertex_rank() for \
+                                         me in self._curr_matrix_elements.get_virt_matrix_elements()]
+
+            card_path = os.path.join(path, os.path.pardir, 'SubProcesses', \
+                                     'procdef_mg5.dat')
+            
+            if self.options['loop_optimized_output'] and \
+               len(max_loop_vertex_ranks) > 0:
+                self._curr_exporter.write_coef_specs_file(max_loop_vertex_ranks)
+            if self._generate_info:
+                self._curr_exporter.write_procdef_mg5(card_path, #
+                                self._curr_model['name'],
+                                self._generate_info)
+                try:
+                    cmd.Cmd.onecmd(self, 'history .')
+                except Exception:
+                    logger.debug('fail to run command \"history cmd\"')
+                    pass
+            subproc_path = os.path.join(path, os.path.pardir, 'SubProcesses', \
+                                     'initial_states_map.dat')
+            self._curr_exporter.write_init_map(subproc_path,
+                                self._curr_matrix_elements.get('initial_states'))
+            
+        cpu_time1 = time.time()
+
+        
+
+class ResummationRunInterface(amcatnlo_run.aMCatNLOCmdShell):
+    """ Specialization of the aMC@NLO run interface. In practice, needed to 
+    steer the NLO and aMC@LO run and to monitor the resummation jobs."""
+    cluster_jobs_identifier_specifier = 'production_me'
+
