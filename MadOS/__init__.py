@@ -14,6 +14,7 @@ root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.insert(0, root_path)
 
 import MadOS.mados_interface as mados_interface
+import MadOS.mados_exporter as mados_exporter
 ##import Resummation.resummation_exporters as resummation_exporters
 
 # Three types of functionality are allowed in a plugin
@@ -25,7 +26,7 @@ import MadOS.mados_interface as mados_interface
 #    example: new_output = {'myformat': MYCLASS}
 #    madgraph will then allow the command "output myformat PATH"
 #    MYCLASS should inherated of the class madgraph.iolibs.export_v4.VirtualExporter 
-##new_output = {'MadOS': mados_exporters.MadOSExporter}
+new_output = {'mados': mados_exporter.MadOSExporter}
 
 # 2. Define new way to handle the cluster.
 #    example new_cluster = {'mycluster': MYCLUSTERCLASS}

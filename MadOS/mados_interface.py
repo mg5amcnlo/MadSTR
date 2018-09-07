@@ -26,8 +26,12 @@ import madgraph.iolibs.files as files
 import madgraph.various.lhe_parser as lhe_parser
 from madgraph.interface.loop_interface import CommonLoopInterface
 import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+import madgraph.iolibs.export_v4 as export_v4
+import madgraph.iolibs.helas_call_writers as helas_call_writers
 
 import MadOS.mados_fks as mados_fks
+import MadOS.mados_exporter as mados_exporter
+import madgraph.fks.fks_helas_objects as fks_helas
 
 
 plugin_path = os.path.dirname(os.path.realpath( __file__ ))
@@ -81,23 +85,112 @@ class MadOSInterface(master_interface.MasterCmd):
         need to be exported too
         """
         if not hasattr(self, '_fks_multi_proc') or not self._fks_multi_proc:
+            #MZMZ in these cases we should also switch the interface
+            # or we just do no output
             super(MadOSInterface, self).do_output(line)
             return
         elif self.n_os == 0:
             super(MadOSInterface, self).do_output(line)
             return
 
-        # let us generate right away the matrix elements
-        if not self._curr_matrix_elements.get_matrix_elements():
-            self._curr_matrix_elements = \
-                             mados_fks.FKSHelasMultiProcessWithOS(\
-                                self._fks_multi_proc, 
-                                loop_optimized= self.options['loop_optimized_output'])
+        args = self.split_arg(line)
+        # Check Argument validity
+        self.check_output(args)
+        
+        noclean = '-noclean' in args
+        force = '-f' in args 
+        nojpeg = '-nojpeg' in args
+        main_file_name = ""
+        try:
+            main_file_name = args[args.index('-name') + 1]
+        except Exception:
+            pass
+
+        # For NLO, the group_subprocesses is automatically set to false
+        group_processes = False
+
+        # MZ these are copied from the V4Factory...
+        # It may not be the most efficient way
+        # ==========================================================================
+        # First treat the MadLoop5 standalone case       
+        MadLoop_SA_options = {'clean': not noclean, 
+          'complex_mass':self.options['complex_mass_scheme'],
+          'export_format':'madloop', 
+          'mp':True,
+          'loop_dir': os.path.join(self._mgme_dir,'Template','loop_material'),
+          'cuttools_dir': self._cuttools_dir,
+          'iregi_dir':self._iregi_dir,
+          'pjfry_dir':self.options['pjfry'],
+          'golem_dir':self.options['golem'],
+          'samurai_dir':self.options['samurai'],
+          'ninja_dir':self.options['ninja'],
+          'collier_dir':self.options['collier'],
+          'fortran_compiler':self.options['fortran_compiler'],
+          'f2py_compiler':self.options['f2py_compiler'],
+          'output_dependencies':self.options['output_dependencies'],
+          'SubProc_prefix':'P',
+          'compute_color_flows':self.options['loop_color_flows'],
+          'mode': 'reweight' if self._export_format == "standalone_rw" else '',
+          'cluster_local_path': self.options['cluster_local_path'],
+          'output_options': {'group_subprocesses': False}
+          }
+        # initialize the writer
+
+        if self._export_format in ['NLO']:
+            to_pass = dict(MadLoop_SA_options)
+            to_pass['mp'] = len(self._fks_multi_proc.get_virt_amplitudes()) > 0
+            to_pass['export_format'] = 'FKS5_optimized'
+            self._curr_exporter = mados_exporter.MadOSExporter(self._export_dir, to_pass)
+            
+            self._curr_exporter.pass_information_from_cmd(self)
+
+        # check if a dir with the same name already exists
+        if not force and not noclean and os.path.isdir(self._export_dir)\
+               and self._export_format in ['NLO']:
+            # Don't ask if user already specified force or noclean
+            logger.info('INFO: directory %s already exists.' % self._export_dir)
+            logger.info('If you continue this directory will be deleted and replaced.')
+            answer = self.ask('Do you want to continue?', 'y', ['y','n'], 
+                                                timeout=self.options['timeout'])
+            if answer != 'y':
+                raise self.InvalidCmd('Stopped by user request')
+
+        # if one gets here either used -f or answered yes to the question about
+        # removing the dir
+        if os.path.exists(self._export_dir):
+            shutil.rmtree(self._export_dir)
+
+        # Make a Template Copy
+        if self._export_format in ['NLO']:
+            self._curr_exporter.copy_fkstemplate()
+
+        # Reset _done_export, since we have new directory
+        self._done_export = False
+
+        # Perform export and finalize right away
+        self.export(nojpeg, main_file_name, group_processes=group_processes)
+
+        # Pass potential new information generated during the export.
+        self._curr_exporter.pass_information_from_cmd(self)
+
+        # Automatically run finalize
+        self.finalize(nojpeg)
+            
+        # Generate the virtuals if from OLP
+        if self.options['OLP']!='MadLoop':
+            self._curr_exporter.generate_virtuals_from_OLP(
+              self.born_processes_for_olp,self._export_dir,self.options['OLP'])
+                
+        # Remember that we have done export
+        self._done_export = (self._export_dir, self._export_format)
+
+        # Reset _export_dir, so we don't overwrite by mistake later
+        self._export_dir = None
 
 
 
     # Export a matrix element  
-    def export(self, nojpeg = False, main_file_name = "", group_processes=False):
+    def export(self, nojpeg = False, main_file_name = "", group_processes=False, args=[]):
         """Export a generated amplitude to file"""
 
         self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
@@ -118,7 +211,7 @@ class MadOSInterface(master_interface.MasterCmd):
                                                               "exporting to NLO"
                 else:
                     self._curr_matrix_elements = \
-                             fks_helas.FKSHelasMultiProcess(\
+                             mados_fks.FKSHelasMultiProcessWithOS(\
                                 self._fks_multi_proc, 
                                 loop_optimized= self.options['loop_optimized_output'])
                     

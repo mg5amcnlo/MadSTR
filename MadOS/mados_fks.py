@@ -29,21 +29,32 @@ class FKSHelasMultiProcessWithOS(fks_helas.FKSHelasMultiProcess):
         # now one has to add the OS informations
         # this may not be the best/most optimal way to go, but at least
         # requires no changes in the core fks stuff
+        for born_me in self['matrix_elements']:
+            for real_me in born_me.real_processes:
+                real_me.os_ids = []
+                real_me.os_diagrams = []
+                real_me.os_matrix_elements = []
+
         for born in fksmulti['born_processes']:
+            # we need to use pdgs here because otherwise mirror processes are identified
+            born_pdgs = [l['id'] for l in born.born_proc['legs']]
             for real in born.real_amps:
+                real_pdgs = [l['id'] for l in real.process['legs']]
                 if not real.os_amplitudes:
                     continue
                 #now we have to find the matching born and real 
                 # in the helas process
                 for born_me in self['matrix_elements']:
-                    if not born.born_proc in born_me.born_matrix_element['processes']:
+                    born_me_pdg_list = [[l['id'] for l in p['legs']] for p in born_me.born_matrix_element['processes']]
+                    if not born_pdgs in born_me_pdg_list:
                         continue
                     for real_me in born_me.real_processes:
-                        if not real.process in real_me.matrix_element['processes']:
+                        real_me_pdg_list = [[l['id'] for l in p['legs']] for p in real_me.matrix_element['processes']]
+                        if not real_pdgs in real_me_pdg_list:
                             continue
-                        real_me.os_ids = real.os_ids
-                        real_me.os_diagrams = real.os_diagrams
-                        real_me.os_matrix_elements = [\
+                        real_me.os_ids += real.os_ids
+                        real_me.os_diagrams += real.os_diagrams
+                        real_me.os_matrix_elements += [\
                             helas_objects.HelasDecayChainProcess(os_amp).combine_decay_chain_processes()[0]
                             for os_amp in real.os_amplitudes]
 
@@ -53,9 +64,10 @@ class FKSHelasMultiProcessWithOS(fks_helas.FKSHelasMultiProcess):
         Use the mother class, plus check the os matrix elements
         """
         lorentz_list = super(FKSHelasMultiProcessWithOS, self).get_used_lorentz()
-        for real in self.real_processes:
-            for os_real in real.os_matrix_elements:
-                lorentz_list.extend(os_real.get_used_lorentz())
+        for me in self.get('matrix_elements'): 
+            for real in me.real_processes:
+                for os_real in real.os_matrix_elements:
+                    lorentz_list.extend(os_real.get_used_lorentz())
         return list(set(lorentz_list))
 
 
@@ -64,9 +76,10 @@ class FKSHelasMultiProcessWithOS(fks_helas.FKSHelasMultiProcess):
         Use the mother class, plus check the os matrix elements
         """
         coupl_list = super(FKSHelasMultiProcessWithOS, self).get_used_couplings()
-        for real in self.real_processes:
-            for os_real in real.os_matrix_elements:
-                coupl_list.extend([c for c in os_real.get_used_couplings()])
+        for me in self.get('matrix_elements'): 
+            for real in me.real_processes:
+                for os_real in real.os_matrix_elements:
+                    coupl_list.extend(sum(os_real.get_used_couplings(),[]))
         return coupl_list    
 
 
@@ -87,18 +100,6 @@ class FKSHelasMultiProcessWithOS(fks_helas.FKSHelasMultiProcess):
                     if oth_pdgs not in this_pdgs:
                         this_on_shell['processes'].append(oth_proc)
                         this_pdgs.append(oth_pdgs)
-
-
-    def get_os_ids(self):
-        """Returns the list of the fks infos for all processes in the format
-        {n_me, pdgs, fks_info}, where n_me is the number of real_matrix_element the configuration
-        belongs to"""
-        os_ids = []
-        for real in self.real_processes:
-            # append only the mother particle, i.e. the 1st particle in each list of ids
-            os_ids += [ids[0] for ids in real.os_ids]
-        return set(os_ids)
-
 
 
 

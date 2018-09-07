@@ -9,6 +9,7 @@ import os
 import logging
 import shutil
 import itertools
+import copy
 from math import fmod
 
 plugin_path = os.path.dirname(os.path.realpath( __file__ ))
@@ -17,9 +18,9 @@ from madgraph import MadGraph5Error, InvalidCmd, MG5DIR
 import madgraph.iolibs.export_fks as export_fks
 import madgraph.iolibs.file_writers as writers
 import madgraph.various.misc as misc
-from madgraph.iolibs.files import cp, ln, mv
-
-import resummation_utils
+import madgraph.iolibs.helas_call_writers as helas_call_writers
+import madgraph.iolibs.files as files
+import madgraph.iolibs.drawing_eps as draw
 
 logger = logging.getLogger('MadOS_plugin.MEExporter')
 
@@ -86,32 +87,45 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         """ write the files in the P* directories.
         Call the mother and then add the OS infos
         """
-        super(MadOSExporter, self).generate_directories_fks(matrix_elements, *args)
+        calls = super(MadOSExporter, self).generate_directories_fks(matrix_elements, *args)
 
         # link extra files
         Pdir = pjoin(self.dir_path, 'SubProcesses', \
-                       "P%s" % matrix_element.get('processes')[0].shell_string())
+                       "P%s" % matrix_elements.get('processes')[0].shell_string())
 
         linkfiles = ['transform_os',]
         for f in linkfiles:
-            ln('../%s' % f, cwd=Pdir)
-
+            files.ln('../%s' % f, cwd=Pdir)
         # Add the os_ids to os_ids.mg
-        os_ids = matrix_element.get_os_ids()
+        os_ids = self.get_os_ids_from_me(matrix_elements)
         filename = pjoin(self.dir_path, 'SubProcesses', 'os_ids.mg')
         files.append_to_file(filename,
                              self.write_os_ids,
                              Pdir,
                              os_ids)
+        return calls
+
+
+    def get_os_ids_from_me(self, matrix_element):
+        """Returns the list of the fks infos for all processes in the format
+        {n_me, pdgs, fks_info}, where n_me is the number of real_matrix_element the configuration
+        belongs to"""
+        os_ids = []
+        for real in matrix_element.real_processes:
+            # append only the mother particle, i.e. the 1st particle in each list of ids
+            os_ids += [ids[0] for ids in real.os_ids]
+        return set(os_ids)
+
 
 
     def draw_feynman_diagrams(self, matrix_element):
         """Create the ps files containing the feynman diagrams for the born process,
         as well as for all the real emission processes"""
 
-        super(MadOSExporter, self).draw_feynman_diagrams(matrix_elements)
+        super(MadOSExporter, self).draw_feynman_diagrams(matrix_element)
 
         # now we have to draw those for the os subtractions terms
+        model = matrix_element.born_matrix_element.get('processes')[0].get('model')
         for n, fksreal in enumerate(matrix_element.real_processes):
             for nos, os_me in enumerate(fksreal.os_matrix_elements):
                 suffix = '%d_os_%d' % (n + 1, nos + 1)
@@ -223,8 +237,7 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         replace_dict['spect_mass'] = model.get_particle(spectator)['mass']
 
         # finally write out the file
-        file = open(os.path.join(_file_path, \
-                          'iolibs/template_files/os_wrapper_fks.inc')).read()
+        file = open(os.path.join(self.template_path, 'os_wrapper_fks.inc')).read()
         file = file % replace_dict
         
         # Write the file
@@ -297,27 +310,26 @@ end
         """pass information from the command interface to the exporter.
            Please do not modify any object of the interface from the exporter.
         """
-        self.opt['chaplin_path'] = cmd.resum_options['chaplin_path']
-        self.opt['lapack_path'] = cmd.resum_options['lapack_path']
+        return super(MadOSExporter, self).pass_information_from_cmd(cmd)
 
 
-    def update_fks_makefile(makefile):
+    def update_fks_makefile(self, makefile):
         """add extra files related to OS to the standard aMC@NLO makefile
         """
         content = open(makefile).read()
         to_add = '$(patsubst %.f,%.o,$(wildcard wrapper_matrix_*.f)) transform_os.o '
-        tag = 'FILES= '
-        content.replace(tag, tag + to_add)
+        tag = '\nFILES= '
+        content=content.replace(tag, tag + to_add)
         out = open(makefile, 'w')
         out.write(content)
         out.close()
 
 
-    def update_run_inc(runinc):
+    def update_run_inc(self, runinc):
         """add extra files related to OS to the standard aMC@NLO makefile
         """
         content = open(runinc).read()
-        to_add = 
+        to_add = \
 """
 C for the OS subtraction
       integer iossubtr
