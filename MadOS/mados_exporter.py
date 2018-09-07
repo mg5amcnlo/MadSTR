@@ -93,7 +93,7 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         Pdir = pjoin(self.dir_path, 'SubProcesses', \
                        "P%s" % matrix_elements.get('processes')[0].shell_string())
 
-        linkfiles = ['transform_os',]
+        linkfiles = ['transform_os.f',]
         for f in linkfiles:
             files.ln('../%s' % f, cwd=Pdir)
         # Add the os_ids to os_ids.mg
