@@ -89,16 +89,8 @@ C  iossubtr = 5 -> DS with reshuffling on all FS particles, standard BW
 C  iossubtr = 6 -> DS with reshuffling on all FS particles, running BW
 call transform_os_final(p_reord, p_os, idau1, idau2, dau1_mass, dau2_mass, mom_mass, stat)
 else if (iossubtr.eq.7.or.iossubtr.eq.8) then
-C  iossubtr = 7 -> DS with option C, standard BW
-C  iossubtr = 8 -> DS with option C, running BW
-C copy the permutation and pass it to the reshuffling subroutine
-do i = 1, nexternal
-mom_perm_pass(i) = mom_perm(i)
-enddo
-call transform_os_genps(p_reord, p_os, idau1, idau2, dau1_mass, dau2_mass, mom_mass, mom_perm_pass, stat)
-else if (iossubtr.eq.9.or.iossubtr.eq.10) then
-C  iossubtr = 9 -> DS with reshuffling on spectator, standard BW
-C  iossubtr = 10-> DS with reshuffling on spectator, running BW
+C  iossubtr = 7 -> DS with reshuffling on spectator, standard BW
+C  iossubtr = 8-> DS with reshuffling on spectator, running BW
   call transform_os_spect(p_reord, p_os, idau1, idau2, ispect, dau1_mass, dau2_mass, spect_mass, mom_mass, stat)
 else
   write(*,*) 'ERROR, iossubtr not implemented', iossubtr
@@ -118,9 +110,9 @@ C ibw==2, running BW
 
 if (iossubtr.eq.2) then
   ibw=0
-else if (iossubtr.eq.3.or.iossubtr.eq.5.or.iossubtr.eq.7.or.iossubtr.eq.9) then
+else if (iossubtr.eq.3.or.iossubtr.eq.5.or.iossubtr.eq.7) then
   ibw=1
-else if (iossubtr.eq.4.or.iossubtr.eq.6.or.iossubtr.eq.8.or.iossubtr.eq.10) then
+else if (iossubtr.eq.4.or.iossubtr.eq.6.or.iossubtr.eq.8) then
   ibw=2
 endif
 
