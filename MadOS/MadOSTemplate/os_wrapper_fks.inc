@@ -12,8 +12,9 @@ double precision p_reord(0:3, nexternal)
 double precision wgt
 double precision mom_mass, mom_wdth, dau1_mass, dau2_mass, spect_mass
 C for the OS subtraction
+logical os_include_pdf, os_include_flux
 integer iossubtr
-common /to_os_reshuf/iossubtr
+common /to_os_reshuf/ os_include_pdf, os_include_flux, iossubtr
 integer idau1, idau2, ispect
 parameter (idau1 = %(idau1)d)
 parameter (idau2 = %(idau2)d)
@@ -123,9 +124,11 @@ else if (iossubtr.eq.4.or.iossubtr.eq.6.or.iossubtr.eq.8.or.iossubtr.eq.10) then
   ibw=2
 endif
 
-C compute BW and flux/PDF ratio
+C compute BW and flux/PDF ratio, and include them if needed
 call get_bw_ratio(p_reord, mom_mass, mom_wdth, idau1, idau2, ibw, bwratio) 
 call get_pdf_flux_ratio(p_reord, p_os, pdfratio, fluxratio)
+if (.not.os_include_pdf) pdfratio = 1d0
+if (.not.os_include_flux) fluxratio = 1d0
 
 C finally call the resonant matrix element with the reshuffled momenta
 call smatrix_%(suffix)s(p_os, wgt)

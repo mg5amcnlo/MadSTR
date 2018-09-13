@@ -18,6 +18,7 @@ from madgraph import MadGraph5Error, InvalidCmd, MG5DIR
 import madgraph.iolibs.export_fks as export_fks
 import madgraph.iolibs.file_writers as writers
 import madgraph.various.misc as misc
+import madgraph.various.banner as banner_mod
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.files as files
 import madgraph.iolibs.drawing_eps as draw
@@ -332,8 +333,9 @@ end
         to_add = \
 """
 C for the OS subtraction
+      logical os_include_pdf, os_include_flux
       integer iossubtr
-      common /to_os_reshuf/iossubtr
+      common /to_os_reshuf/ os_include_pdf, os_include_flux, iossubtr
 """
         content+= to_add
         out = open(runinc, 'w')
@@ -494,5 +496,99 @@ C for the OS subtraction
             return new_helas_calls
 
 
+    #===========================================================================
+    #  create the run_card 
+    #===========================================================================
+    def create_run_card(self, processes, history):
+        """create the run_card for MadOS, including the extra variables needed
+        to control the OS subtraction also in banner.py"""
+ 
+        run_card = banner_mod.RunCardNLO()
+        
+        run_card.create_default_for_process(self.proc_characteristic, 
+                                            history,
+                                            processes)
+        
+        run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.dat'))
+
+        # now edit the run_card with the extra variables
+        os_text = \
+"""#***********************************************************************
+# iOSsubtr parameter: used if the process is generated with            *
+# remove_os = True                                                     *
+#  iossubtr = 1 -> DR without interferece                              *
+#  iossubtr = 2 -> DR with interferece                                 *
+#  iossubtr = 3 -> DS with reshuffling on initial state, standard BW   *
+#  iossubtr = 4 -> DS with reshuffling on initial state, running BW    *
+#  iossubtr = 5 -> DS with reshuffling on all FS particles, standard BW*
+#  iossubtr = 6 -> DS with reshuffling on all FS particles, running BW *
+#  iossubtr = 7 -> DS with option C, standard BW                       *
+#  iossubtr = 8 -> DS with option C, running BW                        *
+#  iossubtr = 9 -> DS with reshuffling on spectator, standard BW       *
+#  iossubtr = 10-> DS with reshuffling on spectator, running BW        *
+#***********************************************************************
+  2 = iossubtr ! strategy to be used to remove resonances 
+                         ! appearing in real emissions
+ True = os_include_pdf ! compensate for PDFs when doing reshuffling
+ True = os_include_flux ! compensate for flux when doing reshuffling"""
+
+        run_card_lines = open(pjoin(self.dir_path, 'Cards', 'run_card_default.dat')).read().split('\n')
+        # look for the line which contains 'store_rwgt_info', after which we will insert
+        # the OS block
+        for isplit, line in enumerate(run_card_lines):
+            if 'store_rwgt_info' in line: break
+        new_run_card_lines = run_card_lines[:isplit+1] + os_text.split('\n') + run_card_lines[isplit+1:]
+        new_run_card = open(pjoin(self.dir_path, 'Cards', 'run_card_default.dat'), 'w')
+        new_run_card.write('\n'.join(new_run_card_lines))
+        new_run_card.close()
+
+        # finally copy the run_card_default to run_card
+        files.cp(pjoin(self.dir_path, 'Cards', 'run_card_default.dat'), \
+                 pjoin(self.dir_path, 'Cards', 'run_card.dat'))
+
+        # We also need to update banner.py
+        banner_text = \
+"""        self.add_param('iossubtr', 2)
+        self.add_param('os_include_pdf', True)
+        self.add_param('os_include_flux', True)"""
+
+        banner_lines = open(pjoin(self.dir_path, 'bin', 'internal', 'banner.py')).read().split('\n')
+        for isplit, line in enumerate(banner_lines):
+            if 'store_rwgt_info' in line: break
+        new_banner_lines = banner_lines[:isplit+1] + banner_text.split('\n') + banner_lines[isplit+1:]
+        new_banner = open(pjoin(self.dir_path, 'bin', 'internal', 'banner.py'), 'w')
+        new_banner.write('\n'.join(new_banner_lines))
+        new_banner.close()
+
+
+    def finalize(self, matrix_elements, history, mg5options, flaglist):
+        """call the mother class, and edit coupl.inc to keep the _keep width
+        """
+        super(MadOSExporter, self).finalize(matrix_elements, history, mg5options, flaglist)
+
+
+        os_ids = set()
+        for matrix_element in matrix_elements['matrix_elements']:
+            os_ids = os_ids.union(self.get_os_ids_from_me(matrix_element))
+
+        # add the widths corresponding to the os_ids to coupl.inc
+        particle_dict = self.model.get('particle_dict') 
+        # list(set( is needed for particle/antiparticle with the same width
+        keep_widths = list(set([particle_dict[idd].get('width') for idd in os_ids]))
+        if not keep_widths:
+            # so that the code will compile anyway
+            width_list = 'MDL_WDUMMY_KEEP'
+        else:
+            width_list = ','.join(['%s_keep' % w for w in keep_widths])
+        lines = '\n      double precision %s\n      common /keep_widths/%s\n' %(width_list, width_list)
+        outfile = open(pjoin(self.dir_path, 'Source', 'coupl.inc'), 'a')
+        outfile.write(lines)
+        outfile.close()
+
+        # replace the common_run_interface with the one from mados_plugin
+        internal = pjoin(self.dir_path, 'bin', 'internal')
+        files.mv(pjoin(internal, 'common_run_interface.py'), \
+                 pjoin(internal, 'common_run_interface_MG.py'))
+        files.cp(pjoin(plugin_path, 'common_run_interface.py'), internal)
 
 

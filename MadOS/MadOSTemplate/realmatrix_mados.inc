@@ -116,8 +116,9 @@ C
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR), W(%(wavefunctionsize)d,NWAVEFUNCS)
 
 C for the OS subtraction
+      logical os_include_pdf, os_include_flux
       integer iossubtr
-      common /to_os_reshuf/iossubtr
+      common /to_os_reshuf/ os_include_pdf, os_include_flux, iossubtr
 C  
 C COLOR DATA
 C  
