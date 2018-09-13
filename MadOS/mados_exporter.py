@@ -11,6 +11,7 @@ import shutil
 import itertools
 import copy
 from math import fmod
+import subprocess
 
 plugin_path = os.path.dirname(os.path.realpath( __file__ ))
 
@@ -560,10 +561,10 @@ C for the OS subtraction
 
 
     def finalize(self, matrix_elements, history, mg5options, flaglist):
-        """call the mother class, and edit coupl.inc to keep the _keep width
+        """call the mother class, and do a couple of other things relevant 
+        to OS subtraction
         """
         super(MadOSExporter, self).finalize(matrix_elements, history, mg5options, flaglist)
-
 
         os_ids = set()
         for matrix_element in matrix_elements['matrix_elements']:
@@ -589,4 +590,7 @@ C for the OS subtraction
                  pjoin(internal, 'common_run_interface_MG.py'))
         files.cp(pjoin(plugin_path, 'common_run_interface.py'), internal)
 
+        # finally patch fks_singular so that it won't complain about negative 
+        # weights for the real emission
+        subprocess.call('patch -p3 < %s' % pjoin(self.template_path, 'fks_singular_patch.txt'), cwd=self.dir_path, shell=True)
 
