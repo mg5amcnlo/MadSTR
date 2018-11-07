@@ -59,11 +59,12 @@ class MadOSInterface(master_interface.MasterCmd):
         self.prompt = 'MadOS > '
 
 
-    def do_generate(self, line, *args, **opts):
-        """does the usual generate command, then, if the output mode is NLO
+
+    def do_add(self, line, *args, **opts):
+        """does the usual add command, then, if the output mode is NLO
         on-shell singularities are looked for
         """
-        super(MadOSInterface, self).do_generate(line, *args, **opts)
+        super(MadOSInterface, self).do_add(line, *args, **opts)
         # check that a NLO generation has been done (if not, just return)
         if not hasattr(self, '_fks_multi_proc') or not self._fks_multi_proc:
             logger.warning('No NLO Process has been generated.\n To use MadOS, please generate a process with [QCD]')
