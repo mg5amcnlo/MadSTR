@@ -415,7 +415,7 @@ C for the OS subtraction
             os_diagrams = os_info['diags']
             os_ids = os_info['ids']
             replace_dict['helas_calls'] = \
-                self.change_width_in_os_diagrams(replace_dict['helas_calls'], os_diagrams, os_ids)
+                self.change_width_in_os_diagrams(matrix_element, replace_dict['helas_calls'], os_diagrams, os_ids)
             replace_dict['helas_calls'] += '\n' + \
                     self.get_os_diagrams_lines(matrix_element, os_diagrams, os_ids)
 
@@ -424,7 +424,7 @@ C for the OS subtraction
             # this is for the OS subtraction counterterms, 
             # in this case replace all occurrences of the particle width
             replace_dict['helas_calls'] = \
-                self.change_width_in_os_diagrams(replace_dict['helas_calls'], [], os_ids)
+                self.change_width_in_os_diagrams(matrix_element, replace_dict['helas_calls'], [], os_ids)
     
         # Extract nwavefuncs (important to place after get_matrix_element_calls
         # so that 'me_id' is set)
@@ -475,25 +475,41 @@ C for the OS subtraction
         return text
 
 
-    def change_width_in_os_diagrams(self, helas_calls, os_diagrams, os_ids):
+    def change_width_in_os_diagrams(self, me, helas_calls, os_diagrams, os_ids):
         """change the name of the width used in diagrams with internal resonances, so
         that the width in those diagrams is not set to zero
         """
+        
+        # find the position of the daughters in the list 
+        # 0 is used for the initial state ones to avoid them
+        id_list = [l['id'] if l['state'] else 0 for l in me.get('processes')[0]['legs']]
+
         diagrams_text = helas_calls.split('# Amplitude')
         if os_diagrams:
             for diags, ids in zip(os_diagrams, os_ids):
+                dau_pos = [id_list.index(os_id) + 1 for os_id in ids[-2:]]
                 part_width = self.model.get('particle_dict')[ids[0]].get('width')
 
                 for diag in diags:
-                    if part_width + '_keep' not in diagrams_text:
-                        diagrams_text[diag] = diagrams_text[diag].replace(part_width, part_width + '_keep')
+                    diagram_lines = diagrams_text[diag].split('\n')
+                    for il, l in enumerate(diagram_lines):
+                        # make sure the helas call connects the two daughters
+                        if 'W(1,%d)' % dau_pos[0] in l.upper() and 'W(1,%d)' % dau_pos[1] in l.upper():
+                            if part_width + '_keep' not in l:
+                                diagram_lines[il] = l.replace(part_width, part_width + '_keep')
+                            # we can break here: thanks to the caching, we just
+                            # need to replace once
+                            break
+                    diagrams_text[diag] = '\n'.join(diagram_lines)
+
             return '# Amplitude'.join(diagrams_text)
         else:
             new_helas_calls = copy.copy(helas_calls)
             for ids in os_ids:
                 part_width = self.model.get('particle_dict')[ids[0]].get('width')
                 if part_width + '_keep' not in new_helas_calls:
-                    new_helas_calls = new_helas_calls.replace(part_width, part_width + '_keep')
+                    # again, only the first occurrence should be replaced, thanks fot the caching
+                    new_helas_calls = new_helas_calls.replace(part_width, part_width + '_keep', 1)
             return new_helas_calls
 
 
