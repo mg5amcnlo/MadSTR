@@ -590,15 +590,7 @@ C for the OS subtraction
         particle_dict = self.model.get('particle_dict') 
         # list(set( is needed for particle/antiparticle with the same width
         keep_widths = list(set([particle_dict[idd].get('width') for idd in os_ids]))
-        if not keep_widths:
-            # so that the code will compile anyway
-            width_list = 'MDL_WDUMMY_KEEP'
-        else:
-            width_list = ','.join(['%s_keep' % w for w in keep_widths])
-        lines = '\n      double precision %s\n      common /keep_widths/%s\n' %(width_list, width_list)
-        outfile = open(pjoin(self.dir_path, 'Source', 'coupl.inc'), 'a')
-        outfile.write(lines)
-        outfile.close()
+        self.update_couplinc(keep_widths,pjoin(self.dir_path, 'Source', 'coupl.inc'))
 
         # replace the common_run_interface with the one from mados_plugin
         internal = pjoin(self.dir_path, 'bin', 'internal')
@@ -610,3 +602,17 @@ C for the OS subtraction
         # weights for the real emission
         subprocess.call('patch -p3 < %s' % pjoin(self.template_path, 'fks_singular_patch.txt'), cwd=self.dir_path, shell=True)
 
+
+    def update_couplinc(self, widths, couplinc):
+        """update coupl.inc by adding extra lines for the widths to keep"""
+
+        if not widths:
+            # so that the code will compile anyway
+            width_list = 'MDL_WDUMMY_KEEP'
+        else:
+            width_list = ','.join(['%s_keep' % w for w in widths])
+        lines = '\n      double precision %s\n      common /keep_widths/%s\n' %(width_list, width_list)
+        #outfile = open(couplincpjoin(self.dir_path, 'Source', 'coupl.inc'), 'a')
+        outfile = writers.FortranWriter(couplinc, 'a')
+        outfile.writelines(lines)
+        outfile.close()

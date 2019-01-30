@@ -59,6 +59,15 @@ class MadOSInterface(master_interface.MasterCmd):
         self.prompt = 'MadOS > '
 
 
+    def do_launch(self, line, *args, **opts):
+        """Warn the user not to use launch from the MG5_aMC interface, 
+        but rather to do the launch from within the output folder
+        """
+        raise MadOSInterfaceError(\
+                "\nThe launch command must not be executed from the MG5_aMC shell.\n" + \
+                "Rather, the event generation / cross-section computation should be\n" + \
+                "launched from within the process directory.")
+
 
     def do_add(self, line, *args, **opts):
         """does the usual add command, then, if the output mode is NLO
