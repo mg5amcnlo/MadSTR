@@ -112,6 +112,7 @@ def find_os_divergences(fksreal):
     level, one must have m2=0 or m3=0
     """
     model = fksreal.process['model']
+    forbidden = fksreal.process['forbidden_particles']
     # take account of the orders for the on shell processes
     weighted_order = fksreal.process['orders']['WEIGHTED']
 
@@ -159,6 +160,10 @@ def find_os_divergences(fksreal):
                    leg_1_part['mass'] == leg_2_part['mass'] or \
                    leg_1_part['mass'] == leg_3_part['mass']:
                     continue
+                # check that it is not among the forbidden particles
+                if leg_1_part.get_pdg_code() in forbidden or \
+                   leg_1_part.get_anti_pdg_code() in forbidden:
+                    continue
                 # this should be the final particle (take the antiparticle as
                 # it has to go "into" the interaction)
 
@@ -204,6 +209,11 @@ def find_os_divergences(fksreal):
                 prod_weighted_order = weighted_order - \
                         sum([v * model.get('order_hierarchy')[o] \
                              for o, v in inte['orders'].items()])
+                # skip if prod_weighted_order is negative or zero
+                # negative prod_weighted_order can lead to strange behaviours
+                if prod_weighted_order < 0:
+                    continue
+
                 os_procdef =  MG.Process(\
                              {'model': model,
                               'legs': MG.LegList(os_legs),
