@@ -7,10 +7,13 @@
 
 import copy
 import os 
+import logging
 pjoin = os.path.join
 
 import internal.common_run_interface_MG as common_run_interface
 import internal.check_param_card as param_card_mod
+
+logger = common_run_interface.logger #logging.getLogger('MadOS')
 
 #===============================================================================
 # CommonRunCmd
@@ -46,12 +49,45 @@ class CommonRunCmd(common_run_interface.CommonRunCmd):
 
             parts_keep = [p for p in ufomodel.all_particles if p.pdg_code in os_pids or -p.pdg_code in os_pids]
             decay_to_keep = [(part.get('width'), copy.copy(param_card['decay'].get((abs(part.pdg_code),)))) for part in parts_keep]
+            # Force these widths to be set to zero in param_card.inc
+            # to ensure gauge / pole cancelation
+            param_inc = pjoin(self.me_dir, 'Source', 'param_card.inc')
 
-            incfile = open(pjoin(self.me_dir, 'Source', 'param_card.inc'), 'a')
+            self.replace_widths_in_paramcard_inc(decay_to_keep, param_inc)
+
+            # finally append the width with _keep, which will enter only
+            # the resonant diagrams and the OS counterterms
+            incfile = open(param_inc, 'a')
             for width, param in decay_to_keep:
                 incfile.write('      mdl_%s_keep = %s\n' % (width, ('%e'%float(param.value)).replace('e','d')))
             incfile.close()
 
+
+
+    ############################################################################
+    def replace_widths_in_paramcard_inc(self, decay_to_keep, param_inc):
+        """replace the widths passed in decay_to_keep inside param_inc and
+        force them to be zero"""
+        widths = [('MDL_%s' % d[0]).upper() for d in decay_to_keep]
+        lines = open(param_inc).read().split('\n')
+
+        replaced = False
+
+        for l in lines:
+            if not l: continue
+            param = l.split('=')[0].strip()
+            if param in widths:
+                replaced = True
+                lines[lines.index(l)]=l.replace('=', '= 0D0 !! MadOS Forced !! ')
+                logger.info('MadOS: Forcing width %s to zero inside param_card.inc' % param) 
+
+        if replaced:
+            outfile = open(param_inc, 'w')
+            outfile.write('\n'.join(lines))
+            outfile.close()
+            logger.warning('The replacements above ensure poles cancelation, and affect all widhts\n' + 
+                        '   EXCEPT those which enter the on-shell counterterms, taken from the param_card.\n' +
+                        '   Do NOT set these widhts to zero in the param_card.')
 
 
 
