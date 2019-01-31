@@ -12,6 +12,7 @@ import itertools
 import copy
 from math import fmod
 import subprocess
+import re
 
 plugin_path = os.path.dirname(os.path.realpath( __file__ ))
 
@@ -488,8 +489,13 @@ C for the OS subtraction
         # 0 is used for the initial state ones to avoid them
         id_list = [l['id'] if l['state'] else 0 for l in me.get('processes')[0]['legs']]
 
+
         diagrams_text = helas_calls.split('# Amplitude')
         if os_diagrams:
+            # for each external particle, get the list of helas WFs where it ends into
+            # this may be trivial, but it is non-trivial in the case of majoranas
+            external_wfs = self.get_wfs_for_ext_particles(helas_calls.upper(), len(id_list))
+
             for diags, ids, dau_pos in zip(os_diagrams, os_ids, os_dau_pos):
                 # make sure that the position and id of the daughters are correct
                 for iid, pos in zip(ids[-2:], dau_pos):
@@ -501,7 +507,8 @@ C for the OS subtraction
                     diagram_lines = diagrams_text[diag].split('\n')
                     for il, l in enumerate(diagram_lines):
                         # make sure the helas call connects the two daughters
-                        if 'W(1,%d),' % (dau_pos[0]+1) in l.upper() and 'W(1,%d),' % (dau_pos[1]+1) in l.upper():
+                        if any([w in l.upper() for w in external_wfs[dau_pos[0]]]) and \
+                           any([w in l.upper() for w in external_wfs[dau_pos[1]]]):
                             if part_width + '_keep' not in l:
                                 diagram_lines[il] = l.replace(part_width, part_width + '_keep')
                             # we can break here: thanks to the caching, we just
@@ -519,6 +526,21 @@ C for the OS subtraction
                     new_helas_calls = new_helas_calls.replace(part_width, part_width + '_keep', 1)
             return new_helas_calls
 
+
+    #===========================================================================
+    #  get_wfno_for_ext_particles 
+    #===========================================================================
+    def get_wfs_for_ext_particles(self, helas_calls, nexternal):
+        """for each external particle, returns the list of the
+        wavefunctions associated to it. Non-trivial for majoranas
+        """
+        #start with an empty list
+        wf_list = [[]] * nexternal 
+
+        for i in range(nexternal):
+            pattern=re.compile(r'''\(P\(0,%d\)[^\r\n]*(?P<WF>W\(1,\d+\))''' % (i+1))
+            wf_list[i] = [item.group('WF') for item in pattern.finditer(helas_calls)]
+        return wf_list
 
     #===========================================================================
     #  create the run_card 
