@@ -32,6 +32,7 @@ class FKSHelasMultiProcessWithOS(fks_helas.FKSHelasMultiProcess):
         for born_me in self['matrix_elements']:
             for real_me in born_me.real_processes:
                 real_me.os_ids = []
+                real_me.os_daughter_pos = []
                 real_me.os_diagrams = []
                 real_me.os_matrix_elements = []
 
@@ -53,6 +54,7 @@ class FKSHelasMultiProcessWithOS(fks_helas.FKSHelasMultiProcess):
                         if not real_pdgs in real_me_pdg_list:
                             continue
                         real_me.os_ids += real.os_ids
+                        real_me.os_daughter_pos += real.os_daughter_pos
                         real_me.os_diagrams += real.os_diagrams
                         real_me.os_matrix_elements += [\
                             helas_objects.HelasDecayChainProcess(os_amp).combine_decay_chain_processes()[0]
@@ -118,6 +120,7 @@ def find_os_divergences(fksreal):
 
     fksreal.os_amplitudes = []
     fksreal.os_ids = []
+    fksreal.os_daughter_pos = []
     fksreal.os_diagrams = []
 
     # this is a counter to be returned
@@ -240,6 +243,7 @@ def find_os_divergences(fksreal):
                 n_os+= 1
                 fksreal.os_amplitudes.append(os_amp)
                 fksreal.os_ids.append([leg_1['id'], leg_2['id'], leg_3['id']])
+                fksreal.os_daughter_pos.append([leg_2['number']-1, leg_3['number']-1])
                 fksreal.os_diagrams.append(find_os_diagrams(\
                         fksreal.amplitude, [leg_1, leg_2, leg_3]))
     return n_os

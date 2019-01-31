@@ -153,14 +153,16 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
             self.write_matrix_element_fks(writers.FortranWriter(filename),
                                           fksreal.matrix_element, n + 1, 
                                           fortran_model, 
-                                          os_info = {'diags': fksreal.os_diagrams, 'ids': fksreal.os_ids})
+                                          os_info = {'diags': fksreal.os_diagrams,
+                                                     'ids': fksreal.os_ids,
+                                                     'dau_pos': fksreal.os_daughter_pos})
 
             for nos, os_me in enumerate(fksreal.os_matrix_elements):
                 suffix = '%d_os_%d' % (n + 1, nos + 1)
                 filename = 'matrix_%s.f' % suffix
                 self.write_matrix_element_fks(writers.FortranWriter(filename),
                                             os_me, suffix, fortran_model, 
-                                            os_info = {'diags': [], 'ids': fksreal.os_ids})
+                                            os_info = {'diags': [], 'ids': fksreal.os_ids, 'dau_pos': []})
                 filename = 'wrapper_matrix_%s.f' % suffix
                 self.write_os_wrapper(writers.FortranWriter(filename),
                         fksreal.matrix_element, os_me, suffix, fortran_model)
@@ -414,8 +416,10 @@ C for the OS subtraction
             # this is for the resonant diagrams in the full real emission ME
             os_diagrams = os_info['diags']
             os_ids = os_info['ids']
+            os_dau_pos = os_info['dau_pos']
             replace_dict['helas_calls'] = \
-                self.change_width_in_os_diagrams(matrix_element, replace_dict['helas_calls'], os_diagrams, os_ids)
+                self.change_width_in_os_diagrams(matrix_element, replace_dict['helas_calls'], \
+                                                 os_diagrams, os_ids, os_dau_pos)
             replace_dict['helas_calls'] += '\n' + \
                     self.get_os_diagrams_lines(matrix_element, os_diagrams, os_ids)
 
@@ -424,7 +428,7 @@ C for the OS subtraction
             # this is for the OS subtraction counterterms, 
             # in this case replace all occurrences of the particle width
             replace_dict['helas_calls'] = \
-                self.change_width_in_os_diagrams(matrix_element, replace_dict['helas_calls'], [], os_ids)
+                self.change_width_in_os_diagrams(matrix_element, replace_dict['helas_calls'], [], os_ids, [])
     
         # Extract nwavefuncs (important to place after get_matrix_element_calls
         # so that 'me_id' is set)
@@ -475,26 +479,29 @@ C for the OS subtraction
         return text
 
 
-    def change_width_in_os_diagrams(self, me, helas_calls, os_diagrams, os_ids):
+    def change_width_in_os_diagrams(self, me, helas_calls, os_diagrams, os_ids, os_dau_pos):
         """change the name of the width used in diagrams with internal resonances, so
         that the width in those diagrams is not set to zero
         """
         
-        # find the position of the daughters in the list 
+        # list the ids, to check the position of the daughters 
         # 0 is used for the initial state ones to avoid them
         id_list = [l['id'] if l['state'] else 0 for l in me.get('processes')[0]['legs']]
 
         diagrams_text = helas_calls.split('# Amplitude')
         if os_diagrams:
-            for diags, ids in zip(os_diagrams, os_ids):
-                dau_pos = [id_list.index(os_id) + 1 for os_id in ids[-2:]]
+            for diags, ids, dau_pos in zip(os_diagrams, os_ids, os_dau_pos):
+                # make sure that the position and id of the daughters are correct
+                for iid, pos in zip(ids[-2:], dau_pos):
+                    assert id_list[pos] == iid
+
                 part_width = self.model.get('particle_dict')[ids[0]].get('width')
 
                 for diag in diags:
                     diagram_lines = diagrams_text[diag].split('\n')
                     for il, l in enumerate(diagram_lines):
                         # make sure the helas call connects the two daughters
-                        if 'W(1,%d)' % dau_pos[0] in l.upper() and 'W(1,%d)' % dau_pos[1] in l.upper():
+                        if 'W(1,%d),' % (dau_pos[0]+1) in l.upper() and 'W(1,%d),' % (dau_pos[1]+1) in l.upper():
                             if part_width + '_keep' not in l:
                                 diagram_lines[il] = l.replace(part_width, part_width + '_keep')
                             # we can break here: thanks to the caching, we just
