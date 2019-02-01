@@ -66,6 +66,7 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         # Files or directories to copy from MadOS templates
         to_copy_from_mados_templates = \
                        [ pjoin('SubProcesses','transform_os.f'),
+                         pjoin('SubProcesses','test_OS_subtr.f'),
                          ]
         
         for path in to_copy_from_mados_templates:
@@ -92,11 +93,16 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         """
         calls = super(MadOSExporter, self).generate_directories_fks(matrix_elements, *args)
 
-        # link extra files
+
         Pdir = pjoin(self.dir_path, 'SubProcesses', \
                        "P%s" % matrix_elements.get('processes')[0].shell_string())
 
-        linkfiles = ['transform_os.f',]
+        # the file with the informations for on-shell subtraction
+        filename = pjoin(Pdir, 'osinfo.dat')
+        self.write_osinfo_file(matrix_elements, filename)
+
+        # link extra files
+        linkfiles = ['transform_os.f', 'test_OS_subtr.f']
         for f in linkfiles:
             files.ln('../%s' % f, cwd=Pdir)
         # Add the os_ids to os_ids.mg
@@ -107,6 +113,23 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
                              Pdir,
                              os_ids)
         return calls
+
+    
+    def write_osinfo_file(self,matrix_element,outfilename):
+        """write a .dat file with the on-shell informations
+        """
+        outfile = open(outfilename, 'w')
+        content = ""
+        for i, fksinfo in enumerate(matrix_element.get_fks_info_list()):
+            content += "F %3d " % (i+1)
+            real = matrix_element.real_processes[fksinfo['n_me'] - 1]
+            content += " %3d\n" % len(real.os_ids)
+            for os_id, dau_pos in zip(real.os_ids, real.os_daughter_pos):
+                content += "O "
+                content += " ".join(["%3d" % v for v in os_id]) +  "     "
+                content += " ".join(["%3d" % (v+1) for v in dau_pos]) +  "\n"
+        outfile.write(content)
+        outfile.close()
 
 
     def get_os_ids_from_me(self, matrix_element):
@@ -146,8 +169,6 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         """writes the matrix_i.f files which contain the real matrix elements
         and the matrix_i_os_j.f which contain eventual on shell subtraction
         terms""" 
-
-
 
         for n, fksreal in enumerate(matrix_element.real_processes):
             filename = 'matrix_%d.f' % (n + 1)
@@ -258,21 +279,29 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
 implicit none
 include 'nexternal.inc'
 double precision p(0:3, nexternal)
-double precision wgt, wgt_os
+double precision wgt, wgt_re, wgt_os, wgt_os_this
+double precision iden_comp
+common /to_real_wgts/wgt_re, wgt_os
 integer nfksprocess
 common/c_nfksprocess/nfksprocess
+
+wgt_re=0d0
+wgt_os=0d0
+
 """
         # subtract here the on shell matrix-elements if any is there
         for n, info in enumerate(matrix_element.get_fks_info_list()):
             os_lines = ''
+            iden_re = matrix_element.real_processes[info['n_me'] - 1].matrix_element.get('identical_particle_factor') 
             for i, os_me in \
               enumerate(matrix_element.real_processes[info['n_me'] - 1].os_matrix_elements):
-                os_lines += '\n call smatrix_%d_os_%d_wrapper(p, wgt_os)\n wgt = wgt - wgt_os' \
-                        % (info['n_me'] , i + 1)
+                iden_os = os_me.get('identical_particle_factor') 
+                os_lines += '\n iden_comp=dble(%d)/dble(%d)\ncall smatrix_%d_os_%d_wrapper(p, wgt_os_this)\n wgt_os = wgt_os + wgt_os_this*iden_comp' \
+                        % (iden_os, iden_re, info['n_me'] , i + 1)
 
             file += \
 """if (nfksprocess.eq.%(n)d) then
-call smatrix_%(n_me)d(p, wgt) %(os_lines)s
+call smatrix_%(n_me)d(p, wgt_re) %(os_lines)s
 else""" % {'n': n + 1, 'n_me' : info['n_me'], 'os_lines': os_lines}
 
         if matrix_element.real_processes:
@@ -281,6 +310,7 @@ else""" % {'n': n + 1, 'n_me' : info['n_me'], 'os_lines': os_lines}
 write(*,*) 'ERROR: invalid n in real_matrix :', nfksprocess
 stop
 endif
+wgt = wgt_re - wgt_os
 return
 end
 """
@@ -322,9 +352,34 @@ end
         """add extra files related to OS to the standard aMC@NLO makefile
         """
         content = open(makefile).read()
+
         to_add = '$(patsubst %.f,%.o,$(wildcard wrapper_matrix_*.f)) transform_os.o '
         tag = '\nFILES= '
         content=content.replace(tag, tag + to_add)
+
+        to_add = """\n# Files for testOS
+TESTOS= $(FILES) test_OS_subtr.o BinothLHADummy.o cuts.o                \\
+      pythia_unlops.o recluster.o
+
+"""
+        tag = """# Files for tests"""
+        content=content.replace(tag, to_add+tag)
+
+        to_add = """
+test_OS_subtr: $(TESTOS)
+	$(FC) $(LDFLAGS) -o test_OS_subtr $(TESTOS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS)
+	rm test_OS_subtr.o
+	strip test_OS_subtr
+
+"""
+        tag = """\n
+test_soft_col_limits: $(TEST)
+	$(FC) $(LDFLAGS) -o test_soft_col_limits $(TEST) $(APPLLIBS) $(LINKLIBS) $(FJLIBS)
+	rm test_soft_col_limits.o
+	strip test_soft_col_limits
+"""
+        content=content.replace(tag, tag + to_add)
+
         out = open(makefile, 'w')
         out.write(content)
         out.close()
@@ -621,6 +676,11 @@ C for the OS subtraction
         keep_widths = list(set([particle_dict[idd].get('width') for idd in os_ids]))
         self.update_couplinc(keep_widths,pjoin(self.dir_path, 'Source', 'coupl.inc'))
 
+        # also, add a function that returns these widths to MODEL 
+        filename=pjoin(self.dir_path, 'Source', 'MODEL', 'get_mass_width_fcts.f')
+        width_particles = [particle_dict[idd] for idd in os_ids]
+        self.update_get_mass_width(width_particles, filename)
+
         # replace the common_run_interface with the one from mados_plugin
         internal = pjoin(self.dir_path, 'bin', 'internal')
         files.mv(pjoin(internal, 'common_run_interface.py'), \
@@ -630,6 +690,54 @@ C for the OS subtraction
         # finally patch fks_singular so that it won't complain about negative 
         # weights for the real emission
         subprocess.call('patch -p3 < %s' % pjoin(self.template_path, 'fks_singular_patch.txt'), cwd=self.dir_path, shell=True)
+
+
+    def update_get_mass_width(self, width_particles, filename):
+        """update the get_mass_width to return also the vaule
+        of the _keep widhts"""
+
+        done_particles = []
+
+        iflines_width = ''
+        for i, part in enumerate(width_particles):
+
+            if part in done_particles: continue
+            done_particles.append(part)
+
+            if i == 0:
+                ifstring = 'if'
+            else:
+                ifstring = 'else if'
+            if part['self_antipart']:
+                iflines_width += '%s (id.eq.%d) then\n' % \
+                        (ifstring, part.get_pdg_code())
+            else:
+                iflines_width += '%s (id.eq.%d.or.id.eq.%d) then\n' % \
+                        (ifstring, part.get_pdg_code(), part.get_anti_pdg_code())
+            iflines_width += 'get_width_os_from_id=abs(%s_keep)\n' % part.get('width')
+
+        if len(width_particles)==0:
+            iflines_width = 'if (.True.) then\n'
+
+        outfile = writers.FortranWriter(filename, 'a')
+
+        text = """
+        DOUBLE PRECISION FUNCTION GET_WIDTH_OS_FROM_ID(ID)
+IMPLICIT NONE
+INTEGER ID
+INCLUDE 'coupl.inc'
+
+%sELSE
+GET_WIDTH_OS_FROM_ID=0d0
+ENDIF
+RETURN
+END
+"""     % iflines_width
+        
+        outfile.writelines(text)
+        outfile.close()
+
+        return
 
 
     def update_couplinc(self, widths, couplinc):
