@@ -51,6 +51,12 @@ c-----
         mommass=get_mass_from_id(mother)
         momwdth=get_width_OS_from_id(mother)
 
+        if (mommass.lt.
+     $   (get_mass_from_id(daughters(1))+get_mass_from_id(daughters(2)))) then
+          write(*,*) 'Skipping configuration (non-resonant spectrum)'
+          cycle
+        endif
+
         ! calculate the energy, set it to 2 times the threshold to
         ! produce the mother on-shell
         energy=mommass
@@ -79,8 +85,10 @@ c-----
                  ! found a suitable confituration
             enddo 
             call smatrix_real(p, wgt)
-            write(*,*) '   Found', (mos-mommass) / momwdth,
-     %                 '        FULL/OS:', wgt_re / wgt_os
+            if (abs(1d0 - wgt_re/wgt_os).gt.bw_max) then
+                write(*,*) '   Found', (mos-mommass) / momwdth,
+     %                     '        FULL/OS:', wgt_re / wgt_os
+            endif
           enddo
         enddo
 
@@ -147,6 +155,7 @@ c-----
       character *80 buffer
       character *1 dummy
       nos = 0
+      write(*,*) 
       do while (.true.) 
         read(iunit,'(a)', iostat=iostatus) buffer
 

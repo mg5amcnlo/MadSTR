@@ -544,7 +544,6 @@ C for the OS subtraction
         # 0 is used for the initial state ones to avoid them
         id_list = [l['id'] if l['state'] else 0 for l in me.get('processes')[0]['legs']]
 
-
         diagrams_text = helas_calls.split('# Amplitude')
         if os_diagrams:
             # for each external particle, get the list of helas WFs where it ends into
@@ -564,11 +563,11 @@ C for the OS subtraction
                         # make sure the helas call connects the two daughters
                         if any([w in l.upper() for w in external_wfs[dau_pos[0]]]) and \
                            any([w in l.upper() for w in external_wfs[dau_pos[1]]]):
-                            if part_width + '_keep' not in l:
+                            if part_width + '_keep' not in l and part_width in l:
                                 diagram_lines[il] = l.replace(part_width, part_width + '_keep')
-                            # we can break here: thanks to the caching, we just
-                            # need to replace once
-                            break
+                                # we can break here: thanks to the caching, we just
+                                # need to replace once
+                                break
                     diagrams_text[diag] = '\n'.join(diagram_lines)
 
             return '# Amplitude'.join(diagrams_text)
@@ -577,8 +576,9 @@ C for the OS subtraction
             for ids in os_ids:
                 part_width = self.model.get('particle_dict')[ids[0]].get('width')
                 if part_width + '_keep' not in new_helas_calls:
-                    # again, only the first occurrence should be replaced, thanks fot the caching
-                    new_helas_calls = new_helas_calls.replace(part_width, part_width + '_keep', 1)
+                    # Here we replace the width everywhere, as no
+                    # IR singularities are there in the resonant ME
+                    new_helas_calls = new_helas_calls.replace(part_width, part_width + '_keep')
             return new_helas_calls
 
 
