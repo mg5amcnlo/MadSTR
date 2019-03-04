@@ -473,7 +473,9 @@ C for the OS subtraction
             os_diagrams = os_info['diags']
             os_ids = os_info['ids']
             os_dau_pos = os_info['dau_pos']
-            replace_dict['helas_calls'] = \
+            # add a copy of the helas calls, in order to store diagrams with
+            # non-zero width
+            replace_dict['helas_calls'] += \
                 self.change_width_in_os_diagrams(matrix_element, replace_dict['helas_calls'], \
                                                  os_diagrams, os_ids, os_dau_pos)
             replace_dict['helas_calls'] += '\n' + \
@@ -517,20 +519,25 @@ C for the OS subtraction
 
 
     def get_os_diagrams_lines(self, matrix_element, os_diagrams, os_ids):
-        """ add the lines which set to zero the diagrams used with
-        diagram-removal techniques
+        """ add the lines which set the diagrams used with
+        diagram-removal techniques to zero or to the value including
+        the particle width 
         """
         particle_dict = self.model.get('particle_dict') 
 
-        text = 'if (iossubtr.eq.1) then\n'
+        text = ''
         for diags, ids in zip(os_diagrams, os_ids): 
-            text += 'if (%s.gt.(%s+%s)) then\n' % \
+            text += 'if (%s.gt.(%s+%s)) then\nif (iossubtr.eq.1) then\n' % \
                     tuple([particle_dict[idd].get('mass') for idd in ids])
             for diag in diags:
                 for amp in matrix_element['diagrams'][diag]['amplitudes']:
                     text+= 'amp(%d) = dcmplx(0d0,0d0)\n' % amp['number']
+            text += 'else\n'
+            for diag in diags:
+                for amp in matrix_element['diagrams'][diag]['amplitudes']:
+                    text+= 'amp(%d) = amp_keep_width(%d)\n' % (amp['number'], amp['number'])
             text += 'endif\n'
-        text += 'endif\n'
+            text += 'endif\n'
 
         return text
 
@@ -540,46 +547,24 @@ C for the OS subtraction
         that the width in those diagrams is not set to zero
         """
         
-        # list the ids, to check the position of the daughters 
-        # 0 is used for the initial state ones to avoid them
-        id_list = [l['id'] if l['state'] else 0 for l in me.get('processes')[0]['legs']]
+        new_helas_calls = "\nC the following helas calls are like the ones above, but they keep a finite width for the on-shell resonances\n" +\
+                        copy.copy(helas_calls)
 
-        diagrams_text = helas_calls.split('# Amplitude')
         if os_diagrams:
-            # for each external particle, get the list of helas WFs where it ends into
-            # this may be trivial, but it is non-trivial in the case of majoranas
-            external_wfs = self.get_wfs_for_ext_particles(helas_calls.upper(), len(id_list))
-
             for diags, ids, dau_pos in zip(os_diagrams, os_ids, os_dau_pos):
-                # make sure that the position and id of the daughters are correct
-                for iid, pos in zip(ids[-2:], dau_pos):
-                    assert id_list[pos] == iid
-
                 part_width = self.model.get('particle_dict')[ids[0]].get('width')
-
-                for diag in diags:
-                    diagram_lines = diagrams_text[diag].split('\n')
-                    for il, l in enumerate(diagram_lines):
-                        # make sure the helas call connects the two daughters
-                        if any([w in l.upper() for w in external_wfs[dau_pos[0]]]) and \
-                           any([w in l.upper() for w in external_wfs[dau_pos[1]]]):
-                            if part_width + '_keep' not in l and part_width in l:
-                                diagram_lines[il] = l.replace(part_width, part_width + '_keep')
-                                # we can break here: thanks to the caching, we just
-                                # need to replace once
-                                break
-                    diagrams_text[diag] = '\n'.join(diagram_lines)
-
-            return '# Amplitude'.join(diagrams_text)
+                if part_width + '_keep' not in new_helas_calls:
+                    new_helas_calls = new_helas_calls.replace(part_width, part_width + '_keep')
+            new_helas_calls = new_helas_calls.upper().replace('AMP(', 'AMP_KEEP_WIDTH(')
         else:
-            new_helas_calls = copy.copy(helas_calls)
             for ids in os_ids:
                 part_width = self.model.get('particle_dict')[ids[0]].get('width')
                 if part_width + '_keep' not in new_helas_calls:
                     # Here we replace the width everywhere, as no
                     # IR singularities are there in the resonant ME
                     new_helas_calls = new_helas_calls.replace(part_width, part_width + '_keep')
-            return new_helas_calls
+
+        return new_helas_calls
 
 
     #===========================================================================
