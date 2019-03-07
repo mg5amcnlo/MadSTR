@@ -133,13 +133,25 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
 
 
     def get_os_ids_from_me(self, matrix_element):
-        """Returns the list of the fks infos for all processes in the format
-        {n_me, pdgs, fks_info}, where n_me is the number of real_matrix_element the configuration
-        belongs to"""
+        """Returns the list of the OS ids (resonant particles"""
+        if hasattr(self, "os_ids"): return self.os_ids
         os_ids = []
         for real in matrix_element.real_processes:
             # append only the mother particle, i.e. the 1st particle in each list of ids
             os_ids += [ids[0] for ids in real.os_ids]
+        return set(os_ids)
+
+
+    def get_os_ids_from_file(self, filepath):
+        """Returns the list of the OS ids (resonant particles), reading 
+        the os_ids file.
+        It has a series of line with the format
+        P0_xx_yy: id1 id2 id3"""
+        lines = open(filepath).read().split('\n')
+        os_ids = []
+        for l in lines:
+            if not l: continue
+            os_ids += [int(v) for v in l.split(':')[1].split()]
         return set(os_ids)
 
 
@@ -169,6 +181,7 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         """writes the matrix_i.f files which contain the real matrix elements
         and the matrix_i_os_j.f which contain eventual on shell subtraction
         terms""" 
+        self.os_ids = self.get_os_ids_from_me(matrix_element)
 
         for n, fksreal in enumerate(matrix_element.real_processes):
             filename = 'matrix_%d.f' % (n + 1)
@@ -651,9 +664,7 @@ C for the OS subtraction
         """
         super(MadOSExporter, self).finalize(matrix_elements, history, mg5options, flaglist)
 
-        os_ids = set()
-        for matrix_element in matrix_elements['matrix_elements']:
-            os_ids = os_ids.union(self.get_os_ids_from_me(matrix_element))
+        os_ids = self.get_os_ids_from_file(pjoin(self.dir_path, 'SubProcesses', 'os_ids.mg'))
 
         # add the widths corresponding to the os_ids to coupl.inc
         particle_dict = self.model.get('particle_dict') 

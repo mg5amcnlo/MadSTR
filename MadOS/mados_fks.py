@@ -12,10 +12,15 @@ import madgraph.core.base_objects as MG
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
 import madgraph.fks.fks_helas_objects as fks_helas
-from madgraph import InvalidCmd
+import madgraph.fks.fks_base as fks_base
+import madgraph.fks.fks_common as fks_common
+from madgraph import InvalidCmd, MadGraph5Error
 
 
 logger = logging.getLogger('MadOS_plugin.mados_fks')
+
+class MadOSFKSError(MadGraph5Error):
+    """ Error from the resummation interface. """
 
 
 class FKSHelasMultiProcessWithOS(fks_helas.FKSHelasMultiProcess):
@@ -113,10 +118,23 @@ def find_os_divergences(fksreal):
     since these resonances are introduced at the real-emission
     level, one must have m2=0 or m3=0
     """
-    model = fksreal.process['model']
-    forbidden = fksreal.process['forbidden_particles']
+    if type(fksreal)==fks_base.FKSRealProcess: 
+        process = fksreal.process
+        amplitude = fksreal.amplitude
+        from_helas = False
+
+    elif type(fksreal)==fks_helas.FKSHelasRealProcess:
+        process = fksreal.matrix_element['processes'][0]
+        amplitude = fksreal.matrix_element['base_amplitude']
+        from_helas = True
+
+    else:
+        raise MadOSFKSError("Unknown type of fksreal in find_os_divergences: " + type(fksreal))
+
+    model = process['model']
+    forbidden = process['forbidden_particles']
     # take account of the orders for the on shell processes
-    weighted_order = fksreal.process['orders']['WEIGHTED']
+    weighted_order = process['orders']['WEIGHTED']
 
     fksreal.os_amplitudes = []
     fksreal.os_ids = []
@@ -127,7 +145,7 @@ def find_os_divergences(fksreal):
     n_os = 0
 
     # focus only on final state legs
-    final_legs = [copy.copy(l) for l in fksreal.process['legs'] if l['state']]
+    final_legs = [copy.copy(l) for l in process['legs'] if l['state']]
     for leg_2 in final_legs:
         for leg_3 in [l for l in final_legs if l['number'] > leg_2['number']]:
             # one of the two legs must be massless
@@ -136,9 +154,9 @@ def find_os_divergences(fksreal):
             # prepare the leglist for the 'on shell' process, which should
             # not contain leg_2 and leg_3, but should contain their mother particle
             # if it exists
-            other_legs = [copy.copy(l) for l in fksreal.process['legs'] if \
+            other_legs = [copy.copy(l) for l in process['legs'] if \
                     l != leg_2 and l != leg_3]
-            assert(len(other_legs) == (len(fksreal.process['legs']) - 2))
+            assert(len(other_legs) == (len(process['legs']) - 2))
             leg_2_part = model.get('particle_dict')[leg_2['id']]
             leg_3_part = model.get('particle_dict')[leg_3['id']]
             interactions = [inte for inte in model.get('interaction_dict').values() \
@@ -176,7 +194,7 @@ def find_os_divergences(fksreal):
 
                 os_legs = [copy.copy(l) for l in other_legs]
                 os_legs.insert(leg_2['number'] - 1, leg_1)
-                assert(len(os_legs) == (len(fksreal.process['legs']) - 1))
+                assert(len(os_legs) == (len(process['legs']) - 1))
                 # count the occurences of leg 1 in the final state legs
                 # only one of them has to be decayed
                 nleg_1 = [l['id'] for l in os_legs].count(leg_1['id'])
@@ -245,16 +263,21 @@ def find_os_divergences(fksreal):
                 fksreal.os_ids.append([leg_1['id'], leg_2['id'], leg_3['id']])
                 fksreal.os_daughter_pos.append([leg_2['number']-1, leg_3['number']-1])
                 fksreal.os_diagrams.append(find_os_diagrams(\
-                        fksreal.amplitude, [leg_1, leg_2, leg_3]))
+                        amplitude, [leg_1, leg_2, leg_3], from_helas))
     return n_os
 
 
-def find_os_diagrams(amp, legs):
+def find_os_diagrams(amp, legs, from_helas):
     """ return the diagram number of the diagrams which correspond to the production
     x decay (legs[0] -> legs[1] -> legs[2]
+    If from_helas, then dau1 and dau2 need to be converted to the Leg class 
+    (mom, dau1, dau2 fre FKSlegs) 
     """
     mom, dau1, dau2 = legs
     os_diagrams = []
+    if from_helas:
+        dau1 = fks_common.to_leg(dau1)
+        dau2 = fks_common.to_leg(dau2)
 
     for i, diag in enumerate(amp['diagrams']):
         for vert in diag['vertices']:
@@ -263,3 +286,4 @@ def find_os_diagrams(amp, legs):
                 os_diagrams.append(i)
 
     return os_diagrams
+

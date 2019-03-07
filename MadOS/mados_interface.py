@@ -14,6 +14,9 @@ import random
 import re
 import time
 import shutil
+import signal
+import multiprocessing
+import cPickle
 
 from madgraph import MadGraph5Error, InvalidCmd, MG5DIR
 import madgraph.various.progressbar as pbar
@@ -28,6 +31,7 @@ from madgraph.interface.loop_interface import CommonLoopInterface
 import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.helas_call_writers as helas_call_writers
+import madgraph.core.helas_objects as helas_objects
 
 import MadOS.mados_fks as mados_fks
 import MadOS.mados_exporter as mados_exporter
@@ -39,6 +43,50 @@ plugin_path = os.path.dirname(os.path.realpath( __file__ ))
 logger = logging.getLogger('MadOS_plugin.Interface')
 
 pjoin = os.path.join
+
+
+def generate_directories_fks_async(i):
+    """generates directories in a multi-core way"""
+        
+    arglist = glob_directories_map[i]
+    
+    curr_exporter = arglist[0]
+    mefile = arglist[1]
+    curr_fortran_model = arglist[2]
+    ime = arglist[3]
+    nme = arglist[4]
+    path = arglist[5]
+    olpopts = arglist[6]
+    
+    infile = open(mefile,'rb')
+    me = cPickle.load(infile)
+    infile.close()      
+
+    # here we need to find the OS configuration from the matrix-elements
+    os_couplings = []
+    os_lorentz = [] 
+    for real_me in me.real_processes:
+        mados_fks.find_os_divergences(real_me)
+        real_me.os_matrix_elements = [\
+            helas_objects.HelasDecayChainProcess(os_amp).combine_decay_chain_processes()[0]
+            for os_amp in real_me.os_amplitudes]
+
+        os_couplings.extend(sum([c for osme in real_me.os_matrix_elements for c in osme.get_used_couplings()], []))
+        os_lorentz.extend(sum([osme.get_used_lorentz() for osme in real_me.os_matrix_elements], []))
+
+    calls = curr_exporter.generate_directories_fks(me, curr_fortran_model, ime, nme, path, olpopts)
+    nexternal = curr_exporter.proc_characteristic['nexternal']
+    ninitial = curr_exporter.proc_characteristic['ninitial']
+    processes = me.born_matrix_element.get('processes')
+    
+    #only available after export has been done, so has to be returned from here
+    max_loop_vertex_rank = -99
+    if me.virt_matrix_element:
+        max_loop_vertex_rank = me.virt_matrix_element.get_max_loop_vertex_rank()  
+    
+    return [calls, curr_exporter.fksdirs, max_loop_vertex_rank, ninitial, nexternal, processes, os_couplings, os_lorentz]
+
+
 
 class MadOSInterfaceError(MadGraph5Error):
     """ Error from the resummation interface. """
@@ -77,6 +125,10 @@ class MadOSInterface(master_interface.MasterCmd):
         # check that a NLO generation has been done (if not, just return)
         if not hasattr(self, '_fks_multi_proc') or not self._fks_multi_proc:
             logger.warning('No NLO Process has been generated.\n To use MadOS, please generate a process with [QCD]')
+            return
+
+        if self.options['low_mem_multicore_nlo_generation']: 
+            self.n_os = -1
             return
 
         # now one needs to check for OS resonances
@@ -220,13 +272,13 @@ class MadOSInterface(master_interface.MasterCmd):
                     raise MadGraph5Error, "Cannot group subprocesses when "+\
                                                               "exporting to NLO"
                 else:
-                    self._curr_matrix_elements = \
-                             mados_fks.FKSHelasMultiProcessWithOS(\
-                                self._fks_multi_proc, 
-                                loop_optimized= self.options['loop_optimized_output'])
-                    
                     if not self.options['low_mem_multicore_nlo_generation']: 
                         # generate the code the old way
+                        self._curr_matrix_elements = \
+                                 mados_fks.FKSHelasMultiProcessWithOS(\
+                                    self._fks_multi_proc, 
+                                    loop_optimized= self.options['loop_optimized_output'])
+                    
                         ndiags = sum([len(me.get('diagrams')) for \
                                       me in self._curr_matrix_elements.\
                                       get_matrix_elements()])
@@ -265,6 +317,10 @@ class MadOSInterface(master_interface.MasterCmd):
 
                     else:
                         #new NLO generation
+                        self._curr_matrix_elements = \
+                                 fks_helas.FKSHelasMultiProcess(\
+                                    self._fks_multi_proc, 
+                                    loop_optimized= self.options['loop_optimized_output'])
                         if self._curr_matrix_elements['has_loops']:
                             self._curr_exporter.opt['mp'] = True
                         self._curr_exporter.model = self._curr_model
@@ -352,6 +408,8 @@ class MadOSInterface(master_interface.MasterCmd):
                 self.born_processes = []
                 self.born_processes_for_olp = []
                 max_loop_vertex_ranks = []
+                os_couplings = []
+                os_lorentz = []
                 
                 for diroutput in diroutputmap:
                     calls = calls + diroutput[0]
@@ -359,6 +417,18 @@ class MadOSInterface(master_interface.MasterCmd):
                     max_loop_vertex_ranks.append(diroutput[2])
                     self.born_processes.extend(diroutput[5])
                     self.born_processes_for_olp.append(diroutput[5][0])
+                    os_couplings.extend(diroutput[6])
+                    os_lorentz.extend(diroutput[7])
+
+                # we need to update the couplings/lorentz of the ME
+                # in order to take into account also the OS matrix elements
+                os_couplings = list(set(os_couplings))
+                os_lorentz = list(set(os_lorentz))
+                self._curr_matrix_elements.get_used_couplings()
+                self._curr_matrix_elements['used_couplings'].extend(os_couplings)
+                self._curr_matrix_elements.get_used_lorentz()
+                self._curr_matrix_elements['used_lorentz'].extend(os_lorentz)
+
 
             else:
                 max_loop_vertex_ranks = [me.get_max_loop_vertex_rank() for \
