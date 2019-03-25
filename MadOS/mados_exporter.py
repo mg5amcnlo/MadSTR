@@ -614,15 +614,13 @@ C for the OS subtraction
         os_text = \
 """#***********************************************************************
 # iOSsubtr parameter: used if the process is generated with            *
-# remove_os = True. Options 7/8 are NOT recommended                    *
+# remove_os = True.                                                    *
 #  iossubtr = 1 -> DR without interferece                              *
 #  iossubtr = 2 -> DR with interferece                                 *
 #  iossubtr = 3 -> DS with reshuffling on initial state, standard BW   *
 #  iossubtr = 4 -> DS with reshuffling on initial state, running BW    *
 #  iossubtr = 5 -> DS with reshuffling on all FS particles, standard BW*
 #  iossubtr = 6 -> DS with reshuffling on all FS particles, running BW *
-#  iossubtr = 7 -> DS with reshuffling on spectator, standard BW       *
-#  iossubtr = 8 -> DS with reshuffling on spectator, running BW        *
 #***********************************************************************
   2 = iossubtr ! strategy to be used to remove resonances 
                          ! appearing in real emissions
