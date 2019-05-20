@@ -1,7 +1,7 @@
 ###################################################
 #                                                   #
 #  Source file of the interface for the             #
-#  MadOS plugin of MG5aMC.                          #
+#  MadSTR plugin of MG5aMC.                          #
 #                                                   #
 #####################################################
 
@@ -33,14 +33,14 @@ import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.core.helas_objects as helas_objects
 
-import MadOS.mados_fks as mados_fks
-import MadOS.mados_exporter as mados_exporter
+import MadSTR.madstr_fks as madstr_fks
+import MadSTR.madstr_exporter as madstr_exporter
 import madgraph.fks.fks_helas_objects as fks_helas
 
 
 plugin_path = os.path.dirname(os.path.realpath( __file__ ))
 
-logger = logging.getLogger('MadOS_plugin.Interface')
+logger = logging.getLogger('MadSTR_plugin.Interface')
 
 pjoin = os.path.join
 
@@ -66,7 +66,7 @@ def generate_directories_fks_async(i):
     os_couplings = []
     os_lorentz = [] 
     for real_me in me.real_processes:
-        mados_fks.find_os_divergences(real_me)
+        madstr_fks.find_os_divergences(real_me)
         real_me.os_matrix_elements = [\
             helas_objects.HelasDecayChainProcess(os_amp).combine_decay_chain_processes()[0]
             for os_amp in real_me.os_amplitudes]
@@ -88,30 +88,30 @@ def generate_directories_fks_async(i):
 
 
 
-class MadOSInterfaceError(MadGraph5Error):
+class MadSTRInterfaceError(MadGraph5Error):
     """ Error from the resummation interface. """
 
-class MadOSInvalidCmd(InvalidCmd):
+class MadSTRInvalidCmd(InvalidCmd):
     """ Invalid command issued to the resummation plugin. """
 
 
-class MadOSInterface(master_interface.MasterCmd):
+class MadSTRInterface(master_interface.MasterCmd):
     """ Interface for steering the Resummation tasks. """
 
     # Change the prompt 
     def preloop(self, *args, **opts):
         """only change the prompt after calling  the mother preloop command"""
-        super(MadOSInterface, self).preloop(*args,**opts)
+        super(MadSTRInterface, self).preloop(*args,**opts)
         # The colored prompt screws up the terminal for some reason.
         #self.prompt = '\033[92mPY8Kernels > \033[0m'
-        self.prompt = 'MadOS > '
+        self.prompt = 'MadSTR > '
 
 
     def do_launch(self, line, *args, **opts):
         """Warn the user not to use launch from the MG5_aMC interface, 
         but rather to do the launch from within the output folder
         """
-        raise MadOSInterfaceError(\
+        raise MadSTRInterfaceError(\
                 "\nThe launch command must not be executed from the MG5_aMC shell.\n" + \
                 "Rather, the event generation / cross-section computation should be\n" + \
                 "launched from within the process directory.")
@@ -121,10 +121,10 @@ class MadOSInterface(master_interface.MasterCmd):
         """does the usual add command, then, if the output mode is NLO
         on-shell singularities are looked for
         """
-        super(MadOSInterface, self).do_add(line, *args, **opts)
+        super(MadSTRInterface, self).do_add(line, *args, **opts)
         # check that a NLO generation has been done (if not, just return)
         if not hasattr(self, '_fks_multi_proc') or not self._fks_multi_proc:
-            logger.warning('No NLO Process has been generated.\n To use MadOS, please generate a process with [QCD]')
+            logger.warning('No NLO Process has been generated.\n To use MadSTR, please generate a process with [QCD]')
             return
 
         if self.options['low_mem_multicore_nlo_generation']: 
@@ -136,7 +136,7 @@ class MadOSInterface(master_interface.MasterCmd):
         self.n_os = 0
         for born in self._fks_multi_proc['born_processes']:
             for real in born.real_amps:
-                self.n_os += mados_fks.find_os_divergences(real)
+                self.n_os += madstr_fks.find_os_divergences(real)
         logger.info('Found %d on-shell contributions' % self.n_os)
 
 
@@ -149,10 +149,10 @@ class MadOSInterface(master_interface.MasterCmd):
         if not hasattr(self, '_fks_multi_proc') or not self._fks_multi_proc:
             #MZMZ in these cases we should also switch the interface
             # or we just do no output
-            super(MadOSInterface, self).do_output(line)
+            super(MadSTRInterface, self).do_output(line)
             return
         elif self.n_os == 0:
-            super(MadOSInterface, self).do_output(line)
+            super(MadSTRInterface, self).do_output(line)
             return
 
         args = self.split_arg(line)
@@ -202,7 +202,7 @@ class MadOSInterface(master_interface.MasterCmd):
             to_pass = dict(MadLoop_SA_options)
             to_pass['mp'] = len(self._fks_multi_proc.get_virt_amplitudes()) > 0
             to_pass['export_format'] = 'FKS5_optimized'
-            self._curr_exporter = mados_exporter.MadOSExporter(self._export_dir, to_pass)
+            self._curr_exporter = madstr_exporter.MadSTRExporter(self._export_dir, to_pass)
             
             self._curr_exporter.pass_information_from_cmd(self)
 
@@ -275,7 +275,7 @@ class MadOSInterface(master_interface.MasterCmd):
                     if not self.options['low_mem_multicore_nlo_generation']: 
                         # generate the code the old way
                         self._curr_matrix_elements = \
-                                 mados_fks.FKSHelasMultiProcessWithOS(\
+                                 madstr_fks.FKSHelasMultiProcessWithOS(\
                                     self._fks_multi_proc, 
                                     loop_optimized= self.options['loop_optimized_output'])
                     

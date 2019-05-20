@@ -1,7 +1,7 @@
 #####################################################
 #                                                   #
 #  Source file of the Matrix Elements exports for   #
-#  the MadOS MG5aMC plugin.                         #
+#  the MadSTR MG5aMC plugin.                         #
 #                                                   #
 #####################################################
 
@@ -25,14 +25,14 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.files as files
 import madgraph.iolibs.drawing_eps as draw
 
-logger = logging.getLogger('MadOS_plugin.MEExporter')
+logger = logging.getLogger('MadSTR_plugin.MEExporter')
 
 pjoin = os.path.join 
 
-class MadOSExporterError(MadGraph5Error):
+class MadSTRExporterError(MadGraph5Error):
     """ Error from the Resummation MEs exporter. """ 
 
-class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
+class MadSTRExporter(export_fks.ProcessOptimizedExporterFortranFKS):
     
     # check status of the directory. Remove it if already exists
     check = True 
@@ -46,11 +46,11 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
     # if no grouping on can decide to merge uu~ and u~u anyway:
     sa_symmetry = False
 
-    template_path = pjoin(plugin_path,'MadOSTemplate')
+    template_path = pjoin(plugin_path,'MadSTRTemplate')
     
     def __init__(self, *args, **opts):
         """ Possibly define extra instance attribute for this daughter class."""
-        return super(MadOSExporter, self).__init__(*args, **opts)
+        return super(MadSTRExporter, self).__init__(*args, **opts)
     
     def read_template_file(self, name):
         """ Read a given template file. In conjunction of the use of class attributes,
@@ -61,21 +61,21 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         """Additional actions needed for setup of Template
         """
 
-        super(MadOSExporter, self).copy_fkstemplate(*args, **opts)
+        super(MadSTRExporter, self).copy_fkstemplate(*args, **opts)
 
-        # Files or directories to copy from MadOS templates
-        to_copy_from_mados_templates = \
+        # Files or directories to copy from MadSTR templates
+        to_copy_from_madstr_templates = \
                        [ pjoin('SubProcesses','transform_os.f'),
                          pjoin('SubProcesses','test_OS_subtr.f'),
                          ]
         
-        for path in to_copy_from_mados_templates:
+        for path in to_copy_from_madstr_templates:
             if os.path.isfile(pjoin(self.template_path, path)):
                 shutil.copy(pjoin(self.template_path, path), pjoin(self.dir_path, path))
             elif os.path.isdir(pjoin(self.template_path, path)):
                 shutil.copytree(pjoin(self.template_path, path), pjoin(self.dir_path, path))
             else:
-                raise MadOSExporterError("Template '%s' not found."%pjoin(self.template_path, path))
+                raise MadSTRExporterError("Template '%s' not found."%pjoin(self.template_path, path))
 
         self.update_fks_makefile(pjoin(self.dir_path, 'SubProcesses', 'makefile_fks_dir'))
         self.update_run_inc(pjoin(self.dir_path, 'Source', 'run.inc'))
@@ -91,7 +91,7 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         """ write the files in the P* directories.
         Call the mother and then add the OS infos
         """
-        calls = super(MadOSExporter, self).generate_directories_fks(matrix_elements, *args)
+        calls = super(MadSTRExporter, self).generate_directories_fks(matrix_elements, *args)
 
 
         Pdir = pjoin(self.dir_path, 'SubProcesses', \
@@ -160,7 +160,7 @@ class MadOSExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         """Create the ps files containing the feynman diagrams for the born process,
         as well as for all the real emission processes"""
 
-        super(MadOSExporter, self).draw_feynman_diagrams(matrix_element)
+        super(MadSTRExporter, self).draw_feynman_diagrams(matrix_element)
 
         # now we have to draw those for the os subtractions terms
         model = matrix_element.born_matrix_element.get('processes')[0].get('model')
@@ -358,7 +358,7 @@ end
         """pass information from the command interface to the exporter.
            Please do not modify any object of the interface from the exporter.
         """
-        return super(MadOSExporter, self).pass_information_from_cmd(cmd)
+        return super(MadSTRExporter, self).pass_information_from_cmd(cmd)
 
 
     def update_fks_makefile(self, makefile):
@@ -405,9 +405,9 @@ test_soft_col_limits: $(TEST)
         to_add = \
 """
 C for the OS subtraction
-      logical os_include_pdf, os_include_flux
-      integer iossubtr
-      common /to_os_reshuf/ os_include_pdf, os_include_flux, iossubtr
+      logical str_include_pdf, str_include_flux
+      integer istr
+      common /to_os_reshuf/ str_include_pdf, str_include_flux, istr
 """
         content+= to_add
         out = open(runinc, 'w')
@@ -521,7 +521,7 @@ C for the OS subtraction
     
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
     
-        realfile = open(os.path.join(self.template_path, 'realmatrix_mados.inc')).read()
+        realfile = open(os.path.join(self.template_path, 'realmatrix_madstr.inc')).read()
 
         realfile = realfile % replace_dict
         
@@ -540,7 +540,7 @@ C for the OS subtraction
 
         text = ''
         for diags, ids in zip(os_diagrams, os_ids): 
-            text += 'if (%s.gt.(%s+%s)) then\nif (iossubtr.eq.1) then\n' % \
+            text += 'if (%s.gt.(%s+%s)) then\nif (istr.eq.1) then\n' % \
                     tuple([particle_dict[idd].get('mass') for idd in ids])
             for diag in diags:
                 for amp in matrix_element['diagrams'][diag]['amplitudes']:
@@ -599,7 +599,7 @@ C for the OS subtraction
     #  create the run_card 
     #===========================================================================
     def create_run_card(self, processes, history):
-        """create the run_card for MadOS, including the extra variables needed
+        """create the run_card for MadSTR, including the extra variables needed
         to control the OS subtraction also in banner.py"""
  
         run_card = banner_mod.RunCardNLO()
@@ -613,19 +613,19 @@ C for the OS subtraction
         # now edit the run_card with the extra variables
         os_text = \
 """#***********************************************************************
-# iOSsubtr parameter: used if the process is generated with            *
-# remove_os = True.                                                    *
-#  iossubtr = 1 -> DR without interferece                              *
-#  iossubtr = 2 -> DR with interferece                                 *
-#  iossubtr = 3 -> DS with reshuffling on initial state, standard BW   *
-#  iossubtr = 4 -> DS with reshuffling on initial state, running BW    *
-#  iossubtr = 5 -> DS with reshuffling on all FS particles, standard BW*
-#  iossubtr = 6 -> DS with reshuffling on all FS particles, running BW *
+# Parameters relevant for the MasSTR plugin:                           *
+# iSTR controls the strategy for the resonance treatment               *
+#  istr = 1 -> DR without interferece                                  *
+#  istr = 2 -> DR with interferece                                     *
+#  istr = 3 -> DS with reshuffling on initial state, standard BW       *
+#  istr = 4 -> DS with reshuffling on initial state, running BW        *
+#  istr = 5 -> DS with reshuffling on all FS particles, standard BW    *
+#  istr = 6 -> DS with reshuffling on all FS particles, running BW     *
 #***********************************************************************
-  2 = iossubtr ! strategy to be used to remove resonances 
+  2 = istr ! strategy to be used to remove resonances 
                          ! appearing in real emissions
- True = os_include_pdf ! compensate for PDFs when doing reshuffling
- True = os_include_flux ! compensate for flux when doing reshuffling"""
+ True = str_include_pdf ! compensate for PDFs when doing reshuffling
+ True = str_include_flux ! compensate for flux when doing reshuffling"""
 
         run_card_lines = open(pjoin(self.dir_path, 'Cards', 'run_card_default.dat')).read().split('\n')
         # look for the line which contains 'store_rwgt_info', after which we will insert
@@ -643,9 +643,9 @@ C for the OS subtraction
 
         # We also need to update banner.py
         banner_text = \
-"""        self.add_param('iossubtr', 2)
-        self.add_param('os_include_pdf', True)
-        self.add_param('os_include_flux', True)"""
+"""        self.add_param('istr', 2)
+        self.add_param('str_include_pdf', True)
+        self.add_param('str_include_flux', True)"""
 
         banner_lines = open(pjoin(self.dir_path, 'bin', 'internal', 'banner.py')).read().split('\n')
         for isplit, line in enumerate(banner_lines):
@@ -660,7 +660,7 @@ C for the OS subtraction
         """call the mother class, and do a couple of other things relevant 
         to OS subtraction
         """
-        super(MadOSExporter, self).finalize(matrix_elements, history, mg5options, flaglist)
+        super(MadSTRExporter, self).finalize(matrix_elements, history, mg5options, flaglist)
 
         os_ids = self.get_os_ids_from_file(pjoin(self.dir_path, 'SubProcesses', 'os_ids.mg'))
 
@@ -675,7 +675,7 @@ C for the OS subtraction
         width_particles = [particle_dict[idd] for idd in os_ids]
         self.update_get_mass_width(width_particles, filename)
 
-        # replace the common_run_interface with the one from mados_plugin
+        # replace the common_run_interface with the one from madstr_plugin
         internal = pjoin(self.dir_path, 'bin', 'internal')
         files.mv(pjoin(internal, 'common_run_interface.py'), \
                  pjoin(internal, 'common_run_interface_MG.py'))

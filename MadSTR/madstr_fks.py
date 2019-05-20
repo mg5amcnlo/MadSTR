@@ -1,7 +1,7 @@
 ###################################################
 #                                                   #
 # Source file of some auxiliary function related to #
-# the FKS modules for the MadOS plugin of MG5aMC.   #
+# the FKS modules for the MadSTR plugin of MG5aMC.   #
 #                                                   #
 #####################################################
 
@@ -17,9 +17,9 @@ import madgraph.fks.fks_common as fks_common
 from madgraph import InvalidCmd, MadGraph5Error
 
 
-logger = logging.getLogger('MadOS_plugin.mados_fks')
+logger = logging.getLogger('MadSTR_plugin.madstr_fks')
 
-class MadOSFKSError(MadGraph5Error):
+class MadSTRFKSError(MadGraph5Error):
     """ Error from the resummation interface. """
 
 
@@ -129,7 +129,7 @@ def find_os_divergences(fksreal):
         from_helas = True
 
     else:
-        raise MadOSFKSError("Unknown type of fksreal in find_os_divergences: " + type(fksreal))
+        raise MadSTRFKSError("Unknown type of fksreal in find_os_divergences: " + type(fksreal))
 
     model = process['model']
     forbidden = process['forbidden_particles']

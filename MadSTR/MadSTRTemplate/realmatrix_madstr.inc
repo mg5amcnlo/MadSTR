@@ -117,9 +117,9 @@ C
 
 C for the OS subtraction
       complex*16 AMP_KEEP_WIDTH(NGRAPHS)
-      logical os_include_pdf, os_include_flux
-      integer iossubtr
-      common /to_os_reshuf/ os_include_pdf, os_include_flux, iossubtr
+      logical str_include_pdf, str_include_flux
+      integer istr
+      common /to_os_reshuf/ str_include_pdf, str_include_flux, istr
 C  
 C COLOR DATA
 C  

@@ -13,7 +13,7 @@ pjoin = os.path.join
 import internal.common_run_interface_MG as common_run_interface
 import internal.check_param_card as param_card_mod
 
-logger = common_run_interface.logger #logging.getLogger('MadOS')
+logger = common_run_interface.logger
 
 #===============================================================================
 # CommonRunCmd
@@ -78,16 +78,17 @@ class CommonRunCmd(common_run_interface.CommonRunCmd):
             param = l.split('=')[0].strip()
             if param in widths:
                 replaced = True
-                lines[lines.index(l)]=l.replace('=', '= 0D0 !! MadOS Forced !! ')
-                logger.info('MadOS: Forcing width %s to zero inside param_card.inc' % param) 
+                lines[lines.index(l)]=l.replace('=', '= 0D0 !! MadSTR Forced !! ')
+                logger.info('MadSTR: Forcing width %s to zero inside param_card.inc' % param) 
 
         if replaced:
             outfile = open(param_inc, 'w')
             outfile.write('\n'.join(lines))
             outfile.close()
-            logger.warning('The replacements above ensure poles cancelation, and affect all widhts\n' + 
-                        '   EXCEPT those which enter the on-shell counterterms, taken from the param_card.\n' +
-                        '   Do NOT set these widhts to zero in the param_card.')
+            logger.warning('The replacements above ensure poles cancelation, and affect all widths\n' + 
+                        '   EXCEPT those which enter the resonance-treatment counterterms, which\n' +
+                        '   are taken from the param_card.\n' +
+                        '   Do NOT set these widths to zero in the param_card.')
 
 
 
