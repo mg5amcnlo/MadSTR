@@ -134,7 +134,7 @@ class MadSTRExporter(export_fks.ProcessOptimizedExporterFortranFKS):
 
     def get_os_ids_from_me(self, matrix_element):
         """Returns the list of the OS ids (resonant particles"""
-        if hasattr(self, "os_ids"): return self.os_ids
+        #if hasattr(self, "os_ids"): return self.os_ids
         os_ids = []
         for real in matrix_element.real_processes:
             # append only the mother particle, i.e. the 1st particle in each list of ids

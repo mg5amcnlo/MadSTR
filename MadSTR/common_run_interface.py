@@ -76,9 +76,12 @@ class CommonRunCmd(common_run_interface.CommonRunCmd):
         for l in lines:
             if not l: continue
             param = l.split('=')[0].strip()
-            if param in widths:
+            if param in widths: # widths with standard precision
                 replaced = True
                 lines[lines.index(l)]=l.replace('=', '= 0D0 !! MadSTR Forced !! ')
+                logger.info('MadSTR: Forcing width %s to zero inside param_card.inc' % param) 
+            if param.startswith('MP__') and param[4:] in widths: # widths in quadruple precision 
+                lines[lines.index(l)]=l.replace('=', '= 0E+00_16 !! MadSTR Forced !! ')
                 logger.info('MadSTR: Forcing width %s to zero inside param_card.inc' % param) 
 
         if replaced:

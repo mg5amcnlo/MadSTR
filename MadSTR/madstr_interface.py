@@ -112,7 +112,7 @@ class MadSTRInterface(master_interface.MasterCmd):
         but rather to do the launch from within the output folder
         """
         raise MadSTRInterfaceError(\
-                "\nThe launch command must not be executed from the MG5_aMC shell.\n" + \
+                "\nWith MadSTR, the launch command must not be executed from the MG5_aMC shell.\n" + \
                 "Rather, the event generation / cross-section computation should be\n" + \
                 "launched from within the process directory.")
 
