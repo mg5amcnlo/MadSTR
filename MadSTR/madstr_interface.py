@@ -182,7 +182,6 @@ class MadSTRInterface(master_interface.MasterCmd):
           'loop_dir': os.path.join(self._mgme_dir,'Template','loop_material'),
           'cuttools_dir': self._cuttools_dir,
           'iregi_dir':self._iregi_dir,
-          'pjfry_dir':self.options['pjfry'],
           'golem_dir':self.options['golem'],
           'samurai_dir':self.options['samurai'],
           'ninja_dir':self.options['ninja'],
@@ -196,8 +195,15 @@ class MadSTRInterface(master_interface.MasterCmd):
           'cluster_local_path': self.options['cluster_local_path'],
           'output_options': {'group_subprocesses': False}
           }
-        # initialize the writer
 
+        try:
+            # pjfry is not supported any more from v 2.7.2
+            # so some special care is needed
+            MadLoop_SA_options['pjfry_dir'] = self.options['pjfry']
+        except KeyError:
+            pass
+
+        # initialize the writer
         if self._export_format in ['NLO']:
             to_pass = dict(MadLoop_SA_options)
             to_pass['mp'] = len(self._fks_multi_proc.get_virt_amplitudes()) > 0
