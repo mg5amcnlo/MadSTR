@@ -528,7 +528,7 @@ C for the OS subtraction
         # Write the file
         writer.writelines(realfile)
     
-        return len(filter(lambda call: call.find('#') != 0, helas_calls)), ncolor
+        return len([call for call in helas_calls if call.find('#') != 0]), ncolor
 
 
     def get_os_diagrams_lines(self, matrix_element, os_diagrams, os_ids):

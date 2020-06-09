@@ -16,7 +16,7 @@ import time
 import shutil
 import signal
 import multiprocessing
-import cPickle
+import six.moves.cPickle
 
 from madgraph import MadGraph5Error, InvalidCmd, MG5DIR
 import madgraph.various.progressbar as pbar
@@ -59,7 +59,7 @@ def generate_directories_fks_async(i):
     olpopts = arglist[6]
     
     infile = open(mefile,'rb')
-    me = cPickle.load(infile)
+    me = six.moves.cPickle.load(infile)
     infile.close()      
 
     # here we need to find the OS configuration from the matrix-elements
@@ -268,15 +268,14 @@ class MadSTRInterface(master_interface.MasterCmd):
 
             # Sort amplitudes according to number of diagrams,
             # to get most efficient multichannel output
-            self._curr_amps.sort(lambda a1, a2: a2.get_number_of_diagrams() - \
-                                 a1.get_number_of_diagrams())
+            self._curr_amps.sort(key = lambda a: a.get_number_of_diagrams(), reverse=True)
 
             cpu_time1 = time.time()
             ndiags = 0
             if not self._curr_matrix_elements.get_matrix_elements():
                 if group:
-                    raise MadGraph5Error, "Cannot group subprocesses when "+\
-                                                              "exporting to NLO"
+                    raise MadGraph5Error("Cannot group subprocesses when "+\
+                                                              "exporting to NLO")
                 else:
                     if not self.options['low_mem_multicore_nlo_generation']: 
                         # generate the code the old way
@@ -408,7 +407,7 @@ class MadSTRInterface(master_interface.MasterCmd):
                 proc_charac['nexternal'] = max([diroutput[4] for diroutput in diroutputmap])
                 ninitial_set = set([diroutput[3] for diroutput in diroutputmap])
                 if len(ninitial_set) != 1:
-                    raise MadGraph5Error, ("Invalid ninitial values: %s" % ' ,'.join(list(ninitial_set)))    
+                    raise MadGraph5Error("Invalid ninitial values: %s" % ' ,'.join(list(ninitial_set)))    
                 proc_charac['ninitial'] = list(ninitial_set)[0]
 
                 self.born_processes = []
