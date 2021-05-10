@@ -517,7 +517,16 @@ C for the OS subtraction
             replace_dict['wavefunctionsize'] = 8
     
         # Extract JAMP lines
-        jamp_lines = self.get_JAMP_lines(matrix_element)
+        # MZ this is version dependent as the function
+        # has changed in v 2.9
+        
+        version = misc.get_pkg_info()['version'].split('.')
+        if int(version[0]) == 2 and int(version[1]) < 9:
+            jamp_lines = self.get_JAMP_lines(matrix_element)
+        elif int(version[0]) == 2 and int(version[1]) >= 9: 
+            jamp_lines, dummy = self.get_JAMP_lines(matrix_element)
+        else:
+            raise MadSTRExporterError("Wrong version: %s" % '.'.join(version))
     
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
     
