@@ -523,12 +523,14 @@ C for the OS subtraction
         version = misc.get_pkg_info()['version'].split('.')
         if int(version[0]) == 2 and int(version[1]) < 9:
             jamp_lines = self.get_JAMP_lines(matrix_element)
+            nb_tmp_jamp = 1
         elif int(version[0]) == 2 and int(version[1]) >= 9: 
-            jamp_lines, dummy = self.get_JAMP_lines(matrix_element)
+            jamp_lines, nb_tmp_jamp = self.get_JAMP_lines(matrix_element)
         else:
             raise MadSTRExporterError("Wrong version: %s" % '.'.join(version))
     
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
+        replace_dict['nb_temp_jamp'] = nb_tmp_jamp
     
         realfile = open(os.path.join(self.template_path, 'realmatrix_madstr.inc')).read()
 
