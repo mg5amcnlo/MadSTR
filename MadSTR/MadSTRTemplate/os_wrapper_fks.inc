@@ -31,6 +31,7 @@ integer ibw
 integer stat
 integer os_countall, os_countbad
 common /to_os_count/ os_countall, os_countbad
+%(amp_split_decl)s
 C Functions 
 double precision dot
 
@@ -126,6 +127,7 @@ C finally call the resonant matrix element with the reshuffled momenta
 call smatrix_%(suffix)s(p_os, wgt)
 C and add the weigth, compensating for the reshuffling
 wgt_os = wgt * pdfratio * bwratio * fluxratio
+%(amp_split_add)s
 
 999 continue
 return

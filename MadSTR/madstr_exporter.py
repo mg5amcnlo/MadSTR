@@ -87,12 +87,17 @@ class MadSTRExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         self.write_pdf_opendata()
 
 
-    def generate_directories_fks(self, matrix_elements, *args):
+    def generate_directories_fks(self, matrix_elements, fortran_model, *args):
         """ write the files in the P* directories.
         Call the mother and then add the OS infos
         """
-        calls = super(MadSTRExporter, self).generate_directories_fks(matrix_elements, *args)
+        calls = super(MadSTRExporter, self).generate_directories_fks(matrix_elements, fortran_model, *args)
 
+        # in v3, rewrite real_me_wrapper
+        version = misc.get_pkg_info()['version'].split('.')
+        if int(version[0]) == 3:
+            filename = pjoin(self.dir_path, 'SubProcesses', 'P%s' % matrix_elements.born_me.get('processes')[0].shell_string(), 'real_me_chooser.f')
+            self.write_real_me_wrapper(writers.FortranWriter(filename), matrix_elements, fortran_model)
 
         Pdir = pjoin(self.dir_path, 'SubProcesses', \
                        "P%s" % matrix_elements.get('processes')[0].shell_string())
@@ -163,7 +168,10 @@ class MadSTRExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         super(MadSTRExporter, self).draw_feynman_diagrams(matrix_element)
 
         # now we have to draw those for the os subtractions terms
-        model = matrix_element.born_matrix_element.get('processes')[0].get('model')
+        if hasattr(matrix_element, 'born_matrix_element'):
+            model = matrix_element.born_matrix_element.get('processes')[0].get('model')
+        else:
+            model = matrix_element.born_me.get('processes')[0].get('model')
         for n, fksreal in enumerate(matrix_element.real_processes):
             for nos, os_me in enumerate(fksreal.os_matrix_elements):
                 suffix = '%d_os_%d' % (n + 1, nos + 1)
@@ -275,6 +283,15 @@ class MadSTRExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         replace_dict['ispect'] = spectator 
         replace_dict['spect_mass'] = model.get_particle(spectator)['mass']
 
+
+        version = misc.get_pkg_info()['version'].split('.')
+        if int(version[0]) == 2:
+            replace_dict['amp_split_decl'] = ''
+            replace_dict['amp_split_add'] = ''
+        elif int(version[0]) == 3:
+            replace_dict['amp_split_decl'] = 'include "orders.inc"\n double precision amp_split_os(amp_split_size)\n common /to_amp_split_os/amp_split_os\n' 
+            replace_dict['amp_split_add'] = '\namp_split_os(:) = amp_split_os(:) * pdfratio * bwratio * fluxratio' 
+
         # finally write out the file
         file = open(os.path.join(self.template_path, 'os_wrapper_fks.inc')).read()
         file = file % replace_dict
@@ -297,6 +314,7 @@ double precision iden_comp
 common /to_real_wgts/wgt_re, wgt_os
 integer nfksprocess
 common/c_nfksprocess/nfksprocess
+%(amp_split_decl)s
 
 wgt_re=0d0
 wgt_os=0d0
@@ -304,13 +322,14 @@ wgt_os=0d0
 """
         # subtract here the on shell matrix-elements if any is there
         for n, info in enumerate(matrix_element.get_fks_info_list()):
-            os_lines = ''
+            os_lines = '%(amp_split_copy)s'
             iden_re = matrix_element.real_processes[info['n_me'] - 1].matrix_element.get('identical_particle_factor') 
             for i, os_me in \
               enumerate(matrix_element.real_processes[info['n_me'] - 1].os_matrix_elements):
                 iden_os = os_me.get('identical_particle_factor') 
                 os_lines += '\n iden_comp=dble(%d)/dble(%d)\ncall smatrix_%d_os_%d_wrapper(p, wgt_os_this)\n wgt_os = wgt_os + wgt_os_this*iden_comp' \
                         % (iden_os, iden_re, info['n_me'] , i + 1)
+                os_lines +="%(amp_split_add)s"
 
             file += \
 """if (nfksprocess.eq.%(n)d) then
@@ -331,11 +350,21 @@ end
             file += \
 """
 wgt=0d0
+%(amp_split_zero)s
 return
 end
 """
+        version = misc.get_pkg_info()['version'].split('.')
+        if int(version[0]) == 2:
+            amp_split_dict = {'amp_split_decl': '', 'amp_split_copy': '', 'amp_split_add': '', 'amp_split_zero': ''}
+        elif int(version[0]) == 3:
+            amp_split_dict = {'amp_split_decl': 'include "orders.inc"\n double precision amp_split_os(amp_split_size)\n common /to_amp_split_os/amp_split_os\n', 
+                              'amp_split_copy': '\namp_split(:) = amp_split_os(:)', 
+                              'amp_split_add': '\namp_split(:) = amp_split(:) - amp_split_os(:)*iden_comp', 
+                              'amp_split_zero': 'amp_split(:)=0d0'}
+
         # Write the file
-        writer.writelines(file)
+        writer.writelines(file % amp_split_dict)
         return 0
 
 
@@ -434,6 +463,7 @@ C for the OS subtraction
     
         replace_dict = {}
         replace_dict['N_me'] = str(n)
+        replace_dict['proc_prefix'] = "_" + str(n) # for v3
     
         # Extract version number and date from VERSION file
         info_lines = self.get_mg5_info_lines()
@@ -505,6 +535,10 @@ C for the OS subtraction
         # so that 'me_id' is set)
         nwavefuncs = matrix_element.get_number_of_wavefunctions()
         replace_dict['nwavefuncs'] = nwavefuncs
+
+        nexternal, ninitial = matrix_element.get_nexternal_ninitial()
+        replace_dict['nexternal'] = nexternal
+        replace_dict['ninitial'] = ninitial
     
         # Extract amp2 lines
         amp2_lines = self.get_amp2_lines(matrix_element)
@@ -521,18 +555,38 @@ C for the OS subtraction
         # has changed in v 2.9
         
         version = misc.get_pkg_info()['version'].split('.')
-        if int(version[0]) == 2 and int(version[1]) < 9:
-            jamp_lines = self.get_JAMP_lines(matrix_element)
-            nb_tmp_jamp = 1
-        elif int(version[0]) == 2 and int(version[1]) >= 9: 
-            jamp_lines, nb_tmp_jamp = self.get_JAMP_lines(matrix_element)
+        if int(version[0]) == 2:
+            # v2
+            realfile = open(os.path.join(self.template_path, 'realmatrix_madstr.inc')).read()
+            if int(version[1]) < 9:
+                jamp_lines = self.get_JAMP_lines(matrix_element)
+                nb_tmp_jamp = 1
+            elif int(version[1]) >= 9: 
+                jamp_lines, nb_tmp_jamp = self.get_JAMP_lines(matrix_element)
+        elif int(version[0]) == 3:
+            realfile = open(os.path.join(self.template_path, 'realmatrix_splitorders_madstr.inc')).read()
+
+            split_orders=matrix_element.get('processes')[0].get('split_orders')
+            split_orders_name = matrix_element['processes'][0]['split_orders']
+            squared_orders, amp_orders = matrix_element.get_split_orders_mapping()
+            replace_dict['nAmpSplitOrders']=len(amp_orders)
+            replace_dict['nSqAmpSplitOrders']=len(squared_orders)
+            replace_dict['nSplitOrders']=len(split_orders)
+            amp_so = self.get_split_orders_lines(
+                    [amp_order[0] for amp_order in amp_orders],'AMPSPLITORDERS')
+            sqamp_so = self.get_split_orders_lines(squared_orders,'SQSPLITORDERS')
+            replace_dict['ampsplitorders']='\n'.join(amp_so)
+            # add a comment line
+            replace_dict['sqsplitorders']= \
+    'C the values listed below are for %s\n' % ', '.join(split_orders_name)
+            replace_dict['sqsplitorders']+='\n'.join(sqamp_so)           
+            jamp_lines, nb_tmp_jamp = self.get_JAMP_lines_split_order(\
+                       matrix_element,amp_orders,split_order_names=split_orders)
         else:
             raise MadSTRExporterError("Wrong version: %s" % '.'.join(version))
     
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
         replace_dict['nb_temp_jamp'] = nb_tmp_jamp
-    
-        realfile = open(os.path.join(self.template_path, 'realmatrix_madstr.inc')).read()
 
         realfile = realfile % replace_dict
         

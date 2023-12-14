@@ -45,5 +45,5 @@ __author__ = 'Marco Zaro'
 __email__ = 'marco.zaro@gmail.com'
 __version__ = (1,0,0)
 minimal_mg5amcnlo_version = (2,9,0) 
-maximal_mg5amcnlo_version = (2,9,1000)
-latest_validated_version = (2,9,0)
+maximal_mg5amcnlo_version = (3,6,1000)
+latest_validated_version = (3,5,2)

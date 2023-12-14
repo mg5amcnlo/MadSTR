@@ -43,7 +43,7 @@ class FKSHelasMultiProcessWithOS(fks_helas.FKSHelasMultiProcess):
 
         for born in fksmulti['born_processes']:
             # we need to use pdgs here because otherwise mirror processes are identified
-            born_pdgs = [l['id'] for l in born.born_proc['legs']]
+            born_pdgs = [l['id'] for l in born.born_amp['process']['legs']]
             for real in born.real_amps:
                 real_pdgs = [l['id'] for l in real.process['legs']]
                 if not real.os_amplitudes:
@@ -51,7 +51,10 @@ class FKSHelasMultiProcessWithOS(fks_helas.FKSHelasMultiProcess):
                 #now we have to find the matching born and real 
                 # in the helas process
                 for born_me in self['matrix_elements']:
-                    born_me_pdg_list = [[l['id'] for l in p['legs']] for p in born_me.born_matrix_element['processes']]
+                    if hasattr(born_me, 'born_matrix_element'): #v2
+                        born_me_pdg_list = [[l['id'] for l in p['legs']] for p in born_me.born_matrix_element['processes']]
+                    else: #v3
+                        born_me_pdg_list = [[l['id'] for l in p['legs']] for p in born_me.born_me['processes']]
                     if not born_pdgs in born_me_pdg_list:
                         continue
                     for real_me in born_me.real_processes:
@@ -134,7 +137,14 @@ def find_os_divergences(fksreal):
     model = process['model']
     forbidden = process['forbidden_particles']
     # take account of the orders for the on shell processes
-    weighted_order = process['orders']['WEIGHTED']
+    try:
+        weighted_order = process['orders']['WEIGHTED']
+        sq_weighted_order = 0
+    except KeyError:
+        # this is the case for v3
+        weighted_order = 0
+        sq_weighted_order = sum([process.get('model').get('order_hierarchy')[o] * v for \
+                            (o, v) in process['squared_orders'].items()])
 
     fksreal.os_amplitudes = []
     fksreal.os_ids = []
@@ -225,21 +235,43 @@ def find_os_divergences(fksreal):
 
                 for leg in os_legs:
                     leg['number'] = os_legs.index(leg) + 1
-                # the orders in os_procdef refer only to the production process
-                # so the orders of the splitting have to be subtracted
-                prod_weighted_order = weighted_order - \
-                        sum([v * model.get('order_hierarchy')[o] \
-                             for o, v in inte['orders'].items()])
-                # skip if prod_weighted_order is negative or zero
-                # negative prod_weighted_order can lead to strange behaviours
-                if prod_weighted_order < 0:
-                    continue
 
-                os_procdef =  MG.Process(\
-                             {'model': model,
-                              'legs': MG.LegList(os_legs),
-                              'decay_chains': decay_chains,
-                              'orders': {'WEIGHTED': prod_weighted_order}})
+                if weighted_order > 0 and sq_weighted_order == 0:
+                    # v2 type processes
+                    # the orders in os_procdef refer only to the production process
+                    # so the orders of the splitting have to be subtracted
+                    prod_weighted_order = weighted_order - \
+                            sum([v * model.get('order_hierarchy')[o] \
+                                 for o, v in inte['orders'].items()])
+                    # skip if prod_weighted_order is negative or zero
+                    # negative prod_weighted_order can lead to strange behaviours
+                    if prod_weighted_order < 0:
+                        continue
+
+                    os_procdef =  MG.Process(\
+                                 {'model': model,
+                                  'legs': MG.LegList(os_legs),
+                                  'decay_chains': decay_chains,
+                                  'orders': {'WEIGHTED': prod_weighted_order}})
+                elif weighted_order == 0 and sq_weighted_order > 0:
+                    # v3 type processes
+                    # the orders in os_procdef refer only to the production process
+                    # so the orders of the splitting have to be subtracted
+                    prod_weighted_order = sq_weighted_order - \
+                            sum([2*v * model.get('order_hierarchy')[o] \
+                                 for o, v in inte['orders'].items()])
+                    # skip if prod_weighted_order is negative or zero
+                    # negative prod_weighted_order can lead to strange behaviours
+                    if prod_weighted_order < 0:
+                        continue
+
+                    os_procdef =  MG.Process(\
+                                 {'model': model,
+                                  'legs': MG.LegList(os_legs),
+                                  'decay_chains': decay_chains,
+                                  'split_orders' : [o for o in model.get('coupling_orders')],
+                                  'squared_orders': {'WEIGHTED': prod_weighted_order},
+                                  'sqorders_types': {'WEIGHTED': '<='}})
                 # now generate the amplitude. 
                 # Do nothing if any InvalidCmd is raised (e.g. charge not conserved)
                 # or if no diagrams are there

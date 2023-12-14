@@ -230,7 +230,11 @@ class MadSTRInterface(master_interface.MasterCmd):
 
         # Make a Template Copy
         if self._export_format in ['NLO']:
-            self._curr_exporter.copy_fkstemplate()
+            version = misc.get_pkg_info()['version'].split('.')
+            if int(version[0]) == 2:
+                self._curr_exporter.copy_fkstemplate()
+            elif int(version[0]) == 3:
+                self._curr_exporter.copy_fkstemplate(self._curr_model)
 
         # Reset _done_export, since we have new directory
         self._done_export = False
@@ -294,12 +298,17 @@ class MadSTRInterface(master_interface.MasterCmd):
                         for me in self._curr_matrix_elements.get_matrix_elements():
                             uid += 1 # update the identification number
                             me.get('processes')[0].set('uid', uid)
+                            if hasattr(me, 'born_matrix_element'): # v2
+                                allprocesses = me.born_matrix_element.get('processes')
+                            else: #v3
+                                allprocesses = me.born_me.get('processes')
+
                             try:
                                 initial_states.append(sorted(list(set((p.get_initial_pdg(1),p.get_initial_pdg(2)) for \
-                                                                      p in me.born_matrix_element.get('processes')))))
+                                                                      p in allprocesses))))
                             except IndexError:
                                 initial_states.append(sorted(list(set((p.get_initial_pdg(1)) for \
-                                                                      p in me.born_matrix_element.get('processes')))))
+                                                                      p in allprocesses))))
                         
                             for fksreal in me.real_processes:
                             # Pick out all initial state particles for the two beams
@@ -338,6 +347,7 @@ class MadSTRInterface(master_interface.MasterCmd):
 
         ndiags, cpu_time = generate_matrix_elements(self, group=group_processes)
         calls = 0
+        splitorders = []
 
         path = self._export_dir
 
@@ -360,16 +370,26 @@ class MadSTRInterface(master_interface.MasterCmd):
             self.born_processes = []
             for ime, me in \
                 enumerate(self._curr_matrix_elements.get('matrix_elements')):
+
+                version = misc.get_pkg_info()['version'].split('.')
                 if not self.options['low_mem_multicore_nlo_generation']:
                     #me is a FKSHelasProcessFromReals
-                    calls = calls + \
-                            self._curr_exporter.generate_directories_fks(me, 
+                    calls_dir = self._curr_exporter.generate_directories_fks(me, 
                             self._curr_helas_model, 
                             ime, len(self._curr_matrix_elements.get('matrix_elements')), 
                             path,self.options['OLP'])
+                    if type(calls_dir) == int:
+                        calls+= calls_dir
+                    else:
+                        calls+= calls_dir[0]
+                        splitorders.extend(calls_dir[1])
                     self._fks_directories.extend(self._curr_exporter.fksdirs)
-                    self.born_processes_for_olp.append(me.born_matrix_element.get('processes')[0])
-                    self.born_processes.append(me.born_matrix_element.get('processes'))
+                    if hasattr(me, 'born_matrix_element'):
+                        self.born_processes_for_olp.append(me.born_matrix_element.get('processes')[0])
+                        self.born_processes.append(me.born_matrix_element.get('processes'))
+                    else:
+                        self.born_processes_for_olp.append(me.born_me.get('processes')[0])
+                        self.born_processes.append(me.born_me.get('processes'))
                 else:
                     glob_directories_map.append(\
                             [self._curr_exporter, me, self._curr_helas_model, 
@@ -456,8 +476,14 @@ class MadSTRInterface(master_interface.MasterCmd):
                     pass
             subproc_path = os.path.join(path, os.path.pardir, 'SubProcesses', \
                                      'initial_states_map.dat')
-            self._curr_exporter.write_init_map(subproc_path,
+            nmaxpdf = self._curr_exporter.write_init_map(subproc_path,
                                 self._curr_matrix_elements.get('initial_states'))
+
+            version = misc.get_pkg_info()['version'].split('.')
+            if int(version[0]) == 3:
+                self._curr_exporter.write_maxproc_files(nmaxpdf, 
+                                os.path.join(path, os.path.pardir, 'SubProcesses'))
+                self._curr_exporter.write_orderstag_file(list(set(splitorders)), self._export_dir)
             
         cpu_time1 = time.time()
 
