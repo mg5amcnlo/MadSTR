@@ -746,9 +746,14 @@ C for the OS subtraction
                  pjoin(internal, 'common_run_interface_MG.py'))
         files.cp(pjoin(plugin_path, 'common_run_interface.py'), internal)
 
-        # finally patch fks_singular so that it won't complain about negative 
-        # weights for the real emission
-        subprocess.call('patch -p3 < %s' % pjoin(self.template_path, 'fks_singular_patch.txt'), cwd=self.dir_path, shell=True)
+
+        # in v3, rewrite real_me_wrapper
+        version = misc.get_pkg_info()['version'].split('.')
+        if int(version[0]) == 2:
+            # for MG5_aMC v2 only:
+            # finally patch fks_singular so that it won't complain about negative 
+            # weights for the real emission
+            subprocess.call('patch -p3 < %s' % pjoin(self.template_path, 'fks_singular_patch.txt'), cwd=self.dir_path, shell=True)
 
 
     def update_get_mass_width(self, width_particles, filename):
