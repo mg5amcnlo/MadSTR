@@ -38,7 +38,7 @@ double precision dot
 os_countall = os_countall + 1
 
 C do nothing for diagram removal without interference (istr==1) or when no subtraction is performed (istr==0), amplitudes are set to zero directly in the matrix_X.f
-amp_split_os(:) = 0d0
+%(amp_split_init)s
 wgt_os = 0d0
 if (istr.eq.1.or.istr.eq.0) return
 

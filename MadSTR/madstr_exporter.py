@@ -288,9 +288,11 @@ class MadSTRExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         if int(version[0]) == 2:
             replace_dict['amp_split_decl'] = ''
             replace_dict['amp_split_add'] = ''
+            replace_dict['amp_split_init'] = ''
         elif int(version[0]) == 3:
             replace_dict['amp_split_decl'] = 'include "orders.inc"\n double precision amp_split_os(amp_split_size)\n common /to_amp_split_os/amp_split_os\n' 
             replace_dict['amp_split_add'] = '\namp_split_os(:) = amp_split_os(:) * pdfratio * bwratio * fluxratio' 
+            replace_dict['amp_split_init'] = 'amp_split_os(:) = 0d0'
 
         # finally write out the file
         file = open(os.path.join(self.template_path, 'os_wrapper_fks.inc')).read()
