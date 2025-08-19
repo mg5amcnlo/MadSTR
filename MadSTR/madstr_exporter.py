@@ -566,7 +566,11 @@ C for the OS subtraction
             elif int(version[1]) >= 9: 
                 jamp_lines, nb_tmp_jamp = self.get_JAMP_lines(matrix_element)
         elif int(version[0]) == 3:
-            realfile = open(os.path.join(self.template_path, 'realmatrix_splitorders_madstr.inc')).read()
+            # new color handling introduced in 3.6.2
+            if int(version[1]) >=6 and int(version[2]) >=2: 
+                realfile = open(os.path.join(self.template_path, 'realmatrix_splitorders_madstr362.inc')).read()
+            else:
+                realfile = open(os.path.join(self.template_path, 'realmatrix_splitorders_madstr.inc')).read()
 
             split_orders=matrix_element.get('processes')[0].get('split_orders')
             split_orders_name = matrix_element['processes'][0]['split_orders']

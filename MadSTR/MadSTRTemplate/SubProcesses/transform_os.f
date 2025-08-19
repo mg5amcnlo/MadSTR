@@ -17,8 +17,8 @@ C-----Arguments
 C-----Local
       integer i,j,nu
       double precision qtot(0:3),qsq,pij(0:3),qij(0:3),qz(0:3),dot,threedot
-      double precision lambda_tr,msq_ij,msq_k,msq_i,msq_j,a,b,c,d
-      external dot,threedot,lambda_tr
+      double precision madstr_lambda_tr,msq_ij,msq_k,msq_i,msq_j,a,b,c,d
+      external dot,threedot,madstr_lambda_tr
       double precision zero, one, two
       parameter (zero=0d0,one=1d0,two=2d0)
  
@@ -46,8 +46,8 @@ C----- check that the reshuffling can be done; otherwise return stat=1
       
       do nu=0,3
 C-----spectator kp            
-         q(nu,kp)=dsqrt(lambda_tr(qsq,msq_ij,msq_k))/
-     &        dsqrt(lambda_tr(qsq,dot(pij,pij),msq_k))
+         q(nu,kp)=dsqrt(madstr_lambda_tr(qsq,msq_ij,msq_k))/
+     &        dsqrt(madstr_lambda_tr(qsq,dot(pij,pij),msq_k))
      &        *(p(nu,kp)-dot(qtot,p(0,kp))/qsq*qtot(nu))
      &        +(qsq+msq_k-msq_ij)/two/qsq*qtot(nu)
          
@@ -111,23 +111,23 @@ C--------mass shell condition for spectator
       end
           
 
-      REAL*8 function lambda_tr(x,y,z)
+      REAL*8 function madstr_lambda_tr(x,y,z)
 C-----triangular function
       implicit none
       real*8 x,y,z
-      lambda_tr=x**2+y**2+z**2-2d0*x*y-2d0*x*z-2d0*y*z
+      madstr_lambda_tr=x**2+y**2+z**2-2d0*x*y-2d0*x*z-2d0*y*z
       return
       end
 
 
-      double precision function lambda2(a,b,c)
+      double precision function madstr_lambda2(a,b,c)
       implicit none
       double precision a,b,c
       if (a.le.0d0 .or. abs(b+c).gt.abs(a) .or. abs(b-c).gt.abs(a)) then
-         write (*,*) 'Error #1 in lambda2: inputs not consistent',a,b,c
+         write (*,*) 'Error #1 in madstr_lambda2: inputs not consistent',a,b,c
          stop 1
       endif
-      lambda2=sqrt(1d0-(b+c)**2/a**2)*sqrt(1d0-(b-c)**2/a**2)
+      madstr_lambda2=sqrt(1d0-(b+c)**2/a**2)*sqrt(1d0-(b-c)**2/a**2)
       return
       end
 
@@ -178,7 +178,7 @@ C boost the momenta in the partonic C.o.M. frame
         pboost(nu) = p(nu,1) + p(nu,2)
       enddo
       do i=1,nexternal
-        call invboostx(p(0,i), pboost, pcom(0,i))
+        call madstr_invboostx(p(0,i), pboost, pcom(0,i))
       enddo
 
 c reconstruct the recoil system (all FS particles which are not i and j)
@@ -245,8 +245,8 @@ C now let us turn to the i and j particles and to the recoiling ones
 C *** IJ
 
 c now go to the pij rest frame
-      call invboostx(pcom(0,ip), pij, qi)
-      call invboostx(pcom(0,jp), pij, qj)
+      call madstr_invboostx(pcom(0,ip), pij, qi)
+      call madstr_invboostx(pcom(0,jp), pij, qj)
 
 C check that momenta are back to back
       do nu=1,3
@@ -300,7 +300,7 @@ C boost them to the preco rest frame and then back to
 C the lab frame using qreco
       do i=1, nexternal
         if (i.eq.ip.or.i.eq.jp) cycle
-        call invboostx(pcom(0,i), preco, ptmp)
+        call madstr_invboostx(pcom(0,i), preco, ptmp)
         call boostx(ptmp, qreco, qcom(0,i))
       enddo
 
@@ -360,8 +360,8 @@ c ----reconstruct the momentum pij
       enddo
 
 c and go to the pij rest frame
-      call invboostx(p(0,ip), pij, qi)
-      call invboostx(p(0,jp), pij, qj)
+      call madstr_invboostx(p(0,ip), pij, qi)
+      call madstr_invboostx(p(0,jp), pij, qj)
 
 C check that momenta are back to back
       do nu=1,3
@@ -528,7 +528,7 @@ C-----Arguments
 
 
 
-      subroutine invboostx(p,q , pboost)
+      subroutine madstr_invboostx(p,q , pboost)
 c
 c This subroutine performs the Lorentz boost of a four-momentum.  The
 c momenta p and q are assumed to be given in the same frame.pboost is
@@ -875,8 +875,8 @@ c one from before showering
       double precision q(0:4),p_rec(0:4),M,p_a(0:4,next),p_out(0:4,next)
       double precision expybst,shybst,chybst,chybstmo,xdir(3)
       integer i,j
-      double precision lambda2,rho
-      external lambda2,rho
+      double precision madstr_lambda2,rho
+      external madstr_lambda2,rho
       double precision tiny,vtiny,vvtiny
       parameter (tiny=1d-5,vtiny=1d-8,vvtiny=1d-14)
 c determine recoil momentum and c.m. momentum (EQ.2-3)
@@ -907,7 +907,7 @@ c     check that we are in the c.m. frame
 c determine the boost -- EQ.(8):
       if (p_rec(4)/q(0).gt.vtiny) then
          expybst=(p_rec(0)+rho(p_rec))/(2*q(0)*p_rec(4)**2) * (q(4)**2
-     $        +p_rec(4)**2-M**2-q(4)**2*lambda2(q(0),p_rec(4),M))
+     $        +p_rec(4)**2-M**2-q(4)**2*madstr_lambda2(q(0),p_rec(4),M))
          expybst=1/expybst
       else
          expybst=q(0)*(p_rec(0)+rho(p_rec))/(q(4)**2-M**2)*
@@ -971,8 +971,8 @@ c back-to-back, i.e., we are in the restframe of their mother.
       implicit none
       double precision M,pa(0:4,2),pout(0:4,2),fac1,fac2
       integer i,j
-      double precision lambda2,rho
-      external lambda2,rho
+      double precision madstr_lambda2,rho
+      external madstr_lambda2,rho
       double precision vtiny
       parameter (vtiny=1d-12)
 
@@ -988,7 +988,7 @@ c back-to-back, i.e., we are in the restframe of their mother.
          endif
       enddo
       fac1=(pa(4,1)**2-pa(4,2)**2)/M**2
-      fac2=M/2d0*lambda2(M,pa(4,1),pa(4,2))/rho(pa(0,1))
+      fac2=M/2d0*madstr_lambda2(M,pa(4,1),pa(4,2))/rho(pa(0,1))
       do j=0,3
          if (j.eq.0) then
             pout(j,1)=M/2d0 *(1d0+fac1)
@@ -1004,7 +1004,7 @@ c back-to-back, i.e., we are in the restframe of their mother.
       end
 
 
-      subroutine write_momenta(p)
+      subroutine madstr_write_momenta(p)
       implicit none
       include 'nexternal.inc'
       double precision p(0:3,nexternal)
@@ -1015,7 +1015,7 @@ c back-to-back, i.e., we are in the restframe of their mother.
       return
       end
 
-      subroutine write_momenta4(p)
+      subroutine madstr_write_momenta4(p)
       implicit none
       include 'nexternal.inc'
       double precision p(0:4,nexternal)

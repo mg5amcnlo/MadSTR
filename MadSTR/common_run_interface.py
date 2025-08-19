@@ -10,15 +10,15 @@ import os
 import logging
 pjoin = os.path.join
 
-import internal.common_run_interface_MG as common_run_interface
 import internal.check_param_card as param_card_mod
 
-logger = common_run_interface.logger
+from internal.common_run_interface_MG import *
 
 #===============================================================================
 # CommonRunCmd
 #===============================================================================
-class CommonRunCmd(common_run_interface.CommonRunCmd):
+# overwrite the class from the common_run_interface_MG with some extra functions
+class CommonRunCmd(CommonRunCmd):
 
     def do_treatcards(self, line, amcatnlo=False):
         """ call the mother, then, if the param_card has to be updated, write it again
