@@ -567,7 +567,7 @@ C for the OS subtraction
                 jamp_lines, nb_tmp_jamp = self.get_JAMP_lines(matrix_element)
         elif int(version[0]) == 3:
             # new color handling introduced in 3.6.2
-            if int(version[1]) >=6 and int(version[2]) >=2: 
+            if (int(version[1]) ==6 and int(version[2]) >=2) or int(version[1]) >6: 
                 realfile = open(os.path.join(self.template_path, 'realmatrix_splitorders_madstr362.inc')).read()
             else:
                 realfile = open(os.path.join(self.template_path, 'realmatrix_splitorders_madstr.inc')).read()
