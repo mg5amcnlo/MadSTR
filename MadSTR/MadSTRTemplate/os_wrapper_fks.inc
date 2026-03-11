@@ -15,10 +15,12 @@ C for the OS subtraction
 logical str_include_pdf, str_include_flux
 integer istr
 common /to_os_reshuf/ str_include_pdf, str_include_flux, istr
+integer istr_used
 integer idau1, idau2, ispect
 parameter (idau1 = %(idau1)d)
 parameter (idau2 = %(idau2)d)
 parameter (ispect = %(ispect)d)
+double precision p_dau12(0:3), m_dau12
 integer mom_perm(nexternal), mom_perm_pass(nexternal), ii, i, j
 data mom_perm / %(mom_perm)s /
 include 'coupl.inc'
@@ -31,6 +33,8 @@ integer ibw
 integer stat
 integer os_countall, os_countbad
 common /to_os_count/ os_countall, os_countbad
+double precision bwcutoff
+common/to_bwcutoff/ bwcutoff
 %(amp_split_decl)s
 C Functions 
 double precision dot
@@ -40,7 +44,10 @@ os_countall = os_countall + 1
 C do nothing for diagram removal without interference (istr==1) or when no subtraction is performed (istr==0), amplitudes are set to zero directly in the matrix_X.f
 %(amp_split_init)s
 wgt_os = 0d0
-if (istr.eq.1.or.istr.eq.0) return
+
+istr_used = mod(istr,10)
+
+if (istr_used .eq.1.or.istr_used .eq.0) return
 
 mom_wdth = %(mom_wdth)s_keep
 
@@ -77,25 +84,32 @@ endif
 
 stat=0 !(not all the reshuffling techniques provide stat, so set it to 0 from scratch)
 
+# if istr >10, do nothing if |m(bw)-m_t|>gamma_t*bwcutoff
+if (istr.ge.10) then
+  p_dau12(0:3) = p_reord(0:3, idau1) + p_reord(0:3, idau2)
+  m_dau12 = dsqrt(dot(p_dau12,p_dau12))
+  if (abs(m_dau12-mom_mass).gt.mom_wdth*bwcutoff) return
+endif
+
 C now do the reshuffling of the momenta according to the different values of istr
 C 0 and 1 have already been treated above
-if (istr.eq.2) then
+if (istr_used .eq.2) then
 C  istr==2 -> DR with interferece
   call transform_os_ident(p_reord, p_os)
-elseif (istr.eq.3.or.istr.eq.4) then
+elseif (istr_used .eq.3.or.istr_used .eq.4) then
 C  istr = 3 -> DS with reshuffling on initial state, standard BW
 C  istr = 4 -> DS with reshuffling on initial state, running BW
   call transform_os_init(p_reord, p_os, idau1, idau2, dau1_mass, dau2_mass, mom_mass)
-else if (istr.eq.5.or.istr.eq.6) then
+else if (istr_used .eq.5.or.istr_used .eq.6) then
 C  istr = 5 -> DS with reshuffling on all FS particles, standard BW
 C  istr = 6 -> DS with reshuffling on all FS particles, running BW
 call transform_os_final(p_reord, p_os, idau1, idau2, dau1_mass, dau2_mass, mom_mass, stat)
-else if (istr.eq.7.or.istr.eq.8) then
+else if (istr_used .eq.7.or.istr_used .eq.8) then
 C  istr = 7 -> DS with reshuffling on spectator, standard BW
 C  istr = 8-> DS with reshuffling on spectator, running BW
   call transform_os_spect(p_reord, p_os, idau1, idau2, ispect, dau1_mass, dau2_mass, spect_mass, mom_mass, stat)
 else
-  write(*,*) 'ERROR, istr not implemented', istr
+  write(*,*) 'ERROR, istr not implemented', istr, istr_used 
   stop 1
 endif
 
@@ -110,11 +124,11 @@ C ibw==0, no BW
 C ibw==1, standard BW
 C ibw==2, running BW
 
-if (istr.eq.2) then
+if (istr_used .eq.2) then
   ibw=0
-else if (istr.eq.3.or.istr.eq.5.or.istr.eq.7) then
+else if (istr_used.eq.3.or.istr_used.eq.5.or.istr_used.eq.7) then
   ibw=1
-else if (istr.eq.4.or.istr.eq.6.or.istr.eq.8) then
+else if (istr_used.eq.4.or.istr_used.eq.6.or.istr_used.eq.8) then
   ibw=2
 endif
 
