@@ -172,7 +172,8 @@ def find_os_divergences(fksreal):
             interactions = [inte for inte in model.get('interaction_dict').values() \
                             if len(inte['particles']) == 3 and \
                                 leg_2_part in inte['particles'] and \
-                                leg_3_part in inte['particles']]
+                                leg_3_part in inte['particles'] and inte['type'] == 'base']
+
 
             for inte in interactions:
                 particles = [copy.copy(p) for p in inte['particles']]
