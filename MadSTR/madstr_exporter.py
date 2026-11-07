@@ -25,6 +25,8 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.files as files
 import madgraph.iolibs.drawing_eps as draw
 
+import MadSTR.mg_compat as mg_compat
+
 logger = logging.getLogger('MadSTR_plugin.MEExporter')
 
 pjoin = os.path.join 
@@ -94,7 +96,7 @@ class MadSTRExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         calls = super(MadSTRExporter, self).generate_directories_fks(matrix_elements, fortran_model, *args)
 
         # in v3, rewrite real_me_wrapper
-        version = misc.get_pkg_info()['version'].split('.')
+        version = mg_compat.mg5amcnlo_version()
         if int(version[0]) == 3:
             filename = pjoin(self.dir_path, 'SubProcesses', 'P%s' % matrix_elements.born_me.get('processes')[0].shell_string(), 'real_me_chooser.f')
             self.write_real_me_wrapper(writers.FortranWriter(filename), matrix_elements, fortran_model)
@@ -190,25 +192,73 @@ class MadSTRExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         and the matrix_i_os_j.f which contain eventual on shell subtraction
         terms""" 
         self.os_ids = self.get_os_ids_from_me(matrix_element)
+        # MadGraph7 integrates the real emission with channels built on the
+        # real-emission diagrams: write the files describing them, as
+        # export_fks.write_real_matrix_elements does
+        real_channels = self.has_real_channels()
+        if real_channels:
+            self.write_real_channels_files(matrix_element)
+        # number of squared split orders of each real ME (used by MadGraph7)
+        sqsorders_list = []
 
         for n, fksreal in enumerate(matrix_element.real_processes):
             filename = 'matrix_%d.f' % (n + 1)
-            self.write_matrix_element_fks(writers.FortranWriter(filename),
+            writer = writers.FortranWriter(filename)
+            res = self.write_matrix_element_fks(writer,
                                           fksreal.matrix_element, n + 1, 
                                           fortran_model, 
                                           os_info = {'diags': fksreal.os_diagrams,
                                                      'ids': fksreal.os_ids,
                                                      'dau_pos': fksreal.os_daughter_pos})
+            if n == 0 and real_channels:
+                writer.writelines("""
+      block data initialize_real_diagram_weights
+      implicit none
+      include 'real_matrix_weights.inc'
+      data get_real_diagram_weights /.false./
+      end
+""")
+            writer.close()
+            sqsorders_list.append(res[-1])
 
             for nos, os_me in enumerate(fksreal.os_matrix_elements):
                 suffix = '%d_os_%d' % (n + 1, nos + 1)
                 filename = 'matrix_%s.f' % suffix
                 self.write_matrix_element_fks(writers.FortranWriter(filename),
                                             os_me, suffix, fortran_model, 
-                                            os_info = {'diags': [], 'ids': fksreal.os_ids, 'dau_pos': []})
+                                            os_info = {'diags': [], 'ids': fksreal.os_ids, 'dau_pos': []},
+                                            is_os=True)
                 filename = 'wrapper_matrix_%s.f' % suffix
                 self.write_os_wrapper(writers.FortranWriter(filename),
                         fksreal.matrix_element, os_me, suffix, fortran_model)
+        return sqsorders_list
+
+
+    def has_real_channels(self):
+        """True for a MadGraph7 version which integrates the real emission
+        with channels built on the real-emission diagrams"""
+        return mg_compat.is_mg7() and hasattr(self, 'write_real_channels_file')
+
+
+    def write_real_channels_files(self, matrix_element):
+        """write real_channels.inc, real_channels_structure.json and
+        real_matrix_weights.inc, as export_fks.write_real_matrix_elements of
+        MadGraph7. The channel weights (real_amp2) are filled by the
+        real-emission matrix elements only, not by the on-shell subtraction
+        terms."""
+        self.write_real_channels_file(writers.FortranWriter('real_channels.inc'),
+                                      matrix_element)
+        self.write_real_channels_structure('real_channels_structure.json',
+                                           matrix_element)
+        max_diagrams = max([1] + [real.matrix_element.get_number_of_amplitudes()
+                                 for real in matrix_element.real_processes])
+        weights_writer = writers.FortranWriter('real_matrix_weights.inc')
+        weights_writer.writelines([
+            'double precision real_amp2(%d)' % max_diagrams,
+            'common /c_real_diagram_weights/ real_amp2',
+            'logical get_real_diagram_weights',
+            'common /c_get_real_diagram_weights/ get_real_diagram_weights'])
+        weights_writer.close()
 
 
     def write_os_wrapper(self, writer, real_me, os_me, suffix, fortran_model):
@@ -284,7 +334,7 @@ class MadSTRExporter(export_fks.ProcessOptimizedExporterFortranFKS):
         replace_dict['spect_mass'] = model.get_particle(spectator)['mass']
 
 
-        version = misc.get_pkg_info()['version'].split('.')
+        version = mg_compat.mg5amcnlo_version()
         if int(version[0]) == 2:
             replace_dict['amp_split_decl'] = ''
             replace_dict['amp_split_add'] = ''
@@ -356,7 +406,7 @@ wgt=0d0
 return
 end
 """
-        version = misc.get_pkg_info()['version'].split('.')
+        version = mg_compat.mg5amcnlo_version()
         if int(version[0]) == 2:
             amp_split_dict = {'amp_split_decl': '', 'amp_split_copy': '', 'amp_split_add': '', 'amp_split_zero': ''}
         elif int(version[0]) == 3:
@@ -450,7 +500,7 @@ C for the OS subtraction
     # write_matrix_element_fks
     #===============================================================================
     #test written
-    def write_matrix_element_fks(self, writer, matrix_element, n, fortran_model, os_info={}):
+    def write_matrix_element_fks(self, writer, matrix_element, n, fortran_model, os_info={}, is_os=False):
         """Export a matrix element to a matrix.f file in MG4 madevent format"""
     
         if not matrix_element.get('processes') or \
@@ -505,6 +555,14 @@ C for the OS subtraction
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines)
+        if mg_compat.is_mg7():
+            # MadGraph7 writes the colour data with a %(proc_prefix)s
+            # placeholder; the real-emission matrix elements have no prefix
+            replace_dict['color_data_lines'] %= {'proc_prefix': ''}
+            # the real-diagram channel weights (as write_split_me_fks)
+            replace_dict['real_amp2_lines'] = '\n'.join(
+                line.replace('AMP2(', 'REAL_AMP2(')
+                for line in self.get_amp2_lines(matrix_element))
     
         # Extract helas calls
         helas_calls = fortran_model.get_matrix_element_calls(\
@@ -556,7 +614,7 @@ C for the OS subtraction
         # MZ this is version dependent as the function
         # has changed in v 2.9
         
-        version = misc.get_pkg_info()['version'].split('.')
+        version = mg_compat.mg5amcnlo_version()
         if int(version[0]) == 2:
             # v2
             realfile = open(os.path.join(self.template_path, 'realmatrix_madstr.inc')).read()
@@ -567,7 +625,11 @@ C for the OS subtraction
                 jamp_lines, nb_tmp_jamp = self.get_JAMP_lines(matrix_element)
         elif int(version[0]) == 3:
             # new color handling introduced in 3.6.2
-            if (int(version[1]) ==6 and int(version[2]) >=2) or int(version[1]) >6: 
+            if mg_compat.is_mg7():
+                # built from the template of MadGraph7 (aloha wavefunction
+                # type, flavour handling, real-diagram channels, ...)
+                realfile = mg_compat.mg7_real_matrix_template(os_subtraction=is_os)
+            elif (int(version[1]) ==6 and int(version[2]) >=2) or int(version[1]) >6: 
                 realfile = open(os.path.join(self.template_path, 'realmatrix_splitorders_madstr362.inc')).read()
             else:
                 realfile = open(os.path.join(self.template_path, 'realmatrix_splitorders_madstr.inc')).read()
@@ -599,7 +661,8 @@ C for the OS subtraction
         # Write the file
         writer.writelines(realfile)
     
-        return len([call for call in helas_calls if call.find('#') != 0]), ncolor
+        return len([call for call in helas_calls if call.find('#') != 0]), ncolor, \
+            replace_dict.get('nAmpSplitOrders'), replace_dict.get('nSqAmpSplitOrders')
 
 
     def get_os_diagrams_lines(self, matrix_element, os_diagrams, os_ids):
@@ -754,7 +817,7 @@ C for the OS subtraction
 
 
         # in v3, rewrite real_me_wrapper
-        version = misc.get_pkg_info()['version'].split('.')
+        version = mg_compat.mg5amcnlo_version()
         if int(version[0]) == 2:
             # for MG5_aMC v2 only:
             # finally patch fks_singular so that it won't complain about negative 

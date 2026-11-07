@@ -35,6 +35,7 @@ import madgraph.core.helas_objects as helas_objects
 
 import MadSTR.madstr_fks as madstr_fks
 import MadSTR.madstr_exporter as madstr_exporter
+import MadSTR.mg_compat as mg_compat
 import madgraph.fks.fks_helas_objects as fks_helas
 
 
@@ -230,7 +231,7 @@ class MadSTRInterface(master_interface.MasterCmd):
 
         # Make a Template Copy
         if self._export_format in ['NLO']:
-            version = misc.get_pkg_info()['version'].split('.')
+            version = mg_compat.mg5amcnlo_version()
             if int(version[0]) == 2:
                 self._curr_exporter.copy_fkstemplate()
             elif int(version[0]) == 3:
@@ -371,7 +372,7 @@ class MadSTRInterface(master_interface.MasterCmd):
             for ime, me in \
                 enumerate(self._curr_matrix_elements.get('matrix_elements')):
 
-                version = misc.get_pkg_info()['version'].split('.')
+                version = mg_compat.mg5amcnlo_version()
                 if not self.options['low_mem_multicore_nlo_generation']:
                     #me is a FKSHelasProcessFromReals
                     calls_dir = self._curr_exporter.generate_directories_fks(me, 
@@ -479,7 +480,7 @@ class MadSTRInterface(master_interface.MasterCmd):
             nmaxpdf = self._curr_exporter.write_init_map(subproc_path,
                                 self._curr_matrix_elements.get('initial_states'))
 
-            version = misc.get_pkg_info()['version'].split('.')
+            version = mg_compat.mg5amcnlo_version()
             if int(version[0]) == 3:
                 self._curr_exporter.write_maxproc_files(nmaxpdf, 
                                 os.path.join(path, os.path.pardir, 'SubProcesses'))

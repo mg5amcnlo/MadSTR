@@ -47,3 +47,8 @@ __version__ = (1,0,0)
 minimal_mg5amcnlo_version = (2,9,0) 
 maximal_mg5amcnlo_version = (3,6,1000)
 latest_validated_version = (3,5,2)
+# MadGraph7 has its own version numbering (its NLO code descends from
+# MG5_aMC@NLO 3.8.2, see mg_compat.py)
+minimal_mg7_version = (0,2,1)
+maximal_mg7_version = (0,2,1000)
+latest_validated_mg7_version = (0,2,1)
