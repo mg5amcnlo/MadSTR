@@ -48,7 +48,9 @@ minimal_mg5amcnlo_version = (2,9,0)
 maximal_mg5amcnlo_version = (3,6,1000)
 latest_validated_version = (3,5,2)
 # MadGraph7 has its own version numbering (its NLO code descends from
-# MG5_aMC@NLO 3.8.2, see mg_compat.py)
+# MG5_aMC@NLO 3.8.2, see mg_compat.py). No upper bound: the real-emission
+# template is built from the one of the MadGraph7 installation and the
+# export stops with an explicit error if it can not be patched anymore
 minimal_mg7_version = (0,2,1)
-maximal_mg7_version = (0,2,1000)
+maximal_mg7_version = (1000,0,0)
 latest_validated_mg7_version = (0,2,1)
